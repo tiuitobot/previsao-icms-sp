@@ -307,6 +307,17 @@ def main():
         if modelo is not None:
             print(f"{nome}: AIC={modelo.aic:.2f}, LogLik={modelo.llf:.2f}")
     
+    # 4. Gerar relatório PDF
+    print("\n" + "="*60)
+    print("GERANDO RELATÓRIO PDF")
+    print("="*60)
+    try:
+        from gerar_pdf import gerar_relatorio_pdf
+        gerar_relatorio_pdf()
+        print("   ✓ relatorio_previsao_icms.pdf")
+    except Exception as e:
+        print(f"   ⚠️ Erro ao gerar PDF: {e}")
+    
     print("\n" + "="*60)
     print("PIPELINE CONCLUÍDO ✓")
     print("="*60)
