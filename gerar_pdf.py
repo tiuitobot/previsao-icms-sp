@@ -138,11 +138,46 @@ def gerar_relatorio_pdf():
     
     pdf.ln(10)
     
+    # Gráficos
+    pdf.add_page()
+    pdf.set_font('Arial', 'B', 14)
+    pdf.set_text_color(52, 152, 219)
+    pdf.cell(0, 10, '4. Gráficos', 0, 1)
+    pdf.ln(2)
+    
+    # Gráfico 1: Série histórica
+    pdf.set_font('Arial', 'B', 12)
+    pdf.set_text_color(0, 0, 0)
+    pdf.cell(0, 8, 'Série Histórica e Previsões 2024-2026', 0, 1)
+    pdf.image('grafico_serie_historica.png', x=10, y=None, w=190)
+    pdf.ln(5)
+    
+    # Nova página para gráfico 2
+    pdf.add_page()
+    pdf.set_font('Arial', 'B', 12)
+    pdf.cell(0, 8, 'Comparação entre os 5 Modelos SARIMAX', 0, 1)
+    pdf.image('grafico_comparacao_modelos.png', x=10, y=None, w=190)
+    pdf.ln(5)
+    
+    # Nova página para gráfico 3
+    pdf.add_page()
+    pdf.set_font('Arial', 'B', 12)
+    pdf.cell(0, 8, 'Performance Anual por Modelo', 0, 1)
+    pdf.image('grafico_performance_anual.png', x=10, y=None, w=190)
+    pdf.ln(5)
+    
+    # Nova página para variáveis exógenas
+    pdf.add_page()
+    pdf.set_font('Arial', 'B', 12)
+    pdf.cell(0, 8, 'Variáveis Exógenas do Modelo', 0, 1)
+    pdf.image('grafico_variaveis_exogenas.png', x=10, y=None, w=190)
+    pdf.ln(5)
+    
     # Metodologia
     pdf.add_page()
     pdf.set_font('Arial', 'B', 14)
     pdf.set_text_color(52, 152, 219)
-    pdf.cell(0, 10, '4. Metodologia', 0, 1)
+    pdf.cell(0, 10, '5. Metodologia', 0, 1)
     pdf.ln(2)
     
     pdf.set_font('Arial', '', 10)
@@ -170,7 +205,7 @@ def gerar_relatorio_pdf():
     # Intervalos de Confiança
     pdf.set_font('Arial', 'B', 14)
     pdf.set_text_color(52, 152, 219)
-    pdf.cell(0, 10, '5. Intervalos de Confiança', 0, 1)
+    pdf.cell(0, 10, '6. Intervalos de Confiança', 0, 1)
     pdf.ln(2)
     
     pdf.set_font('Arial', '', 10)
