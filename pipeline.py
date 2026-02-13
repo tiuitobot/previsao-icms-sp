@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """
-Pipeline SEFAZ - Previsão ICMS-SP (v2 - SARIMAX)
+Pipeline SEFAZ - Previsão ICMS-SP (v3 - Todos os Modelos)
 Autor: Tiuito
 Data: 2026-02-13
 
-Pipeline automatizado com modelos ARIMAX completos usando statsmodels.
-Replica os 5 modelos do Rmd original.
+Pipeline com 5 modelos SARIMAX completos salvos individualmente.
 """
 
 import requests
@@ -14,9 +13,9 @@ import numpy as np
 from datetime import datetime
 from calendar import monthrange
 import warnings
+import json
 warnings.filterwarnings('ignore')
 
-# Statsmodels para econometria
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 from statsmodels.stats.diagnostic import acorr_ljungbox
 from statsmodels.tsa.stattools import adfuller
@@ -75,26 +74,27 @@ def preparar_base(ibc_df, igp_df, expectativas):
     print("PREPARAÇÃO DA BASE")
     print("="*60)
     
-    # Série temporal completa
     dates = pd.date_range(start='2003-01-01', end='2026-12-01', freq='MS')
     df = pd.DataFrame({'data': dates})
     df['ano'] = df['data'].dt.year
     df['mes'] = df['data'].dt.month
     
-    # Merge dados
     df = df.merge(ibc_df, on='data', how='left')
     df = df.merge(igp_df, on='data', how='left')
     
-    # Dias úteis
     df['dias_uteis'] = df.apply(lambda x: dias_uteis_ano_mes(x['ano'], x['mes']), axis=1)
     
-    # Dummies
     df['LS2008NOV'] = (((df['ano'] == 2008) & (df['mes'] >= 11)) | (df['ano'] > 2008)).astype(int)
     df['TC2020APR04'] = ((df['ano'] == 2020) & (df['mes'] >= 4) & (df['mes'] <= 7)).astype(int)
     df['TC2022OUT05'] = (((df['ano'] == 2022) & (df['mes'] >= 10)) | 
                          ((df['ano'] == 2023) & (df['mes'] <= 5))).astype(int)
     
-    # Projeção IBC-BR (2025-2026)
+    # Lags
+    for col in ['ibc_br', 'igp_di', 'dias_uteis']:
+        for lag in range(1, 5):
+            df[f'{col}_lag{lag}'] = df[col].shift(lag)
+    
+    # Projeção IBC-BR
     print("\n📈 Projetando IBC-BR...")
     ibc_nov = df[df['data'] == '2025-11-01']['ibc_br'].values[0]
     growth = (1 + expectativas['pib']) ** (1/12) - 1
@@ -102,18 +102,13 @@ def preparar_base(ibc_df, igp_df, expectativas):
         if pd.isna(df.loc[idx, 'ibc_br']):
             df.loc[idx, 'ibc_br'] = ibc_nov * ((1 + growth) ** (i + 1))
     
-    # Projeção IGP-DI (2026)
+    # Projeção IGP-DI
     print("📈 Projetando IGP-DI...")
     igp_jan = df[df['data'] == '2026-01-01']['igp_di'].values[0]
     growth = (1 + expectativas['igpm']) ** (1/11) - 1
     for i, idx in enumerate(df[df['data'] >= '2026-02-01'].index):
         if pd.isna(df.loc[idx, 'igp_di']):
             df.loc[idx, 'igp_di'] = igp_jan * ((1 + growth) ** i)
-    
-    # Lags
-    for col in ['ibc_br', 'igp_di', 'dias_uteis']:
-        for lag in range(1, 5):
-            df[f'{col}_lag{lag}'] = df[col].shift(lag)
     
     print(f"   ✓ Base: {len(df)} meses x {len(df.columns)} colunas")
     return df
@@ -140,32 +135,23 @@ def carregar_icms(df):
     return df
 
 
-def teste_estacionariedade(serie, nome):
-    """Teste ADF para estacionariedade."""
-    result = adfuller(serie.dropna())
-    print(f"\n📊 Teste ADF - {nome}:")
-    print(f"   Estatística: {result[0]:.4f}")
-    print(f"   p-valor: {result[1]:.4f}")
-    print(f"   {'✓ Estacionária' if result[1] < 0.05 else '✗ Não estacionária'}")
-    return result[1] < 0.05
-
-
-def ajustar_modelo_sarimax(y, X, ordem, sazonal, nome):
-    """Ajusta modelo SARIMAX."""
+def ajustar_modelo(y, X, ordem, sazonal, nome):
+    """Ajusta modelo SARIMAX com tratamento de NaN."""
     print(f"\n🔧 {nome}")
     print(f"   Ordem: {ordem}, Sazonal: {sazonal}")
     
     try:
-        # Remover NaNs
+        # Tratamento de NaN - MANTÉM apenas linhas completas
         mask = X.notna().all(axis=1) & y.notna()
         y_clean = y[mask]
         X_clean = X[mask]
+        
+        print(f"   Dados utilizados: {len(y_clean)} observações")
         
         model = SARIMAX(y_clean, exog=X_clean, order=ordem, seasonal_order=sazonal,
                         enforce_stationarity=False, enforce_invertibility=False)
         result = model.fit(disp=False)
         
-        # Ljung-Box nos resíduos
         lb = acorr_ljungbox(result.resid, lags=12, return_df=True)
         lb_pval = lb['lb_pvalue'].iloc[-1]
         
@@ -173,16 +159,18 @@ def ajustar_modelo_sarimax(y, X, ordem, sazonal, nome):
         print(f"   ✓ Log-Likelihood: {result.llf:.2f}")
         print(f"   ✓ Ljung-Box (lag 12): p={lb_pval:.4f}")
         
-        return result
+        return result, mask
     except Exception as e:
         print(f"   ✗ Erro: {e}")
-        return None
+        import traceback
+        traceback.print_exc()
+        return None, None
 
 
 def main():
     """Pipeline principal."""
     print("="*60)
-    print("PIPELINE SEFAZ - PREVISÃO ICMS-SP (SARIMAX)")
+    print("PIPELINE SEFAZ - PREVISÃO ICMS-SP (5 MODELOS)")
     print("="*60)
     
     # 1. Dados
@@ -195,58 +183,52 @@ def main():
     y = np.log(train['icms_sp'])
     
     print("\n" + "="*60)
-    print("TESTES DE ESTACIONARIEDADE")
-    print("="*60)
-    teste_estacionariedade(y, "log(ICMS) em nível")
-    teste_estacionariedade(y.diff().dropna(), "log(ICMS) em 1ª diferença")
-    
-    # 3. Ajustar modelos SARIMAX (replicando os 5 do R)
-    print("\n" + "="*60)
-    print("AJUSTE DOS MODELOS SARIMAX")
+    print("AJUSTE DOS 5 MODELOS SARIMAX")
     print("="*60)
     
     modelos = {}
+    mascaras = {}
     
-    # Modelo 1: AutoARIMA simplificado → SARIMA(1,1,1)(0,0,0)
+    # Modelo 1: SARIMA(1,1,1) + Dummies
     X1 = train[['dias_uteis', 'LS2008NOV', 'TC2020APR04', 'TC2022OUT05']]
-    modelos['Modelo 1'] = ajustar_modelo_sarimax(
+    modelos['Modelo 1'], mascaras['Modelo 1'] = ajustar_modelo(
         y, X1, (1,1,1), (0,0,0,12), 
         "Modelo 1: SARIMA(1,1,1) + Dummies"
     )
     
-    # Modelo 2: ARIMAX(3,1,0)(2,0,0) + IGP-DI lag1, IBC-BR lag1
+    # Modelo 2: SARIMAX(3,1,0)(2,0,0) + IGP-DI lag1, IBC-BR lag1
     X2 = train[['igp_di_lag1', 'ibc_br_lag1', 'dias_uteis', 
                 'LS2008NOV', 'TC2020APR04', 'TC2022OUT05']]
-    modelos['Modelo 2'] = ajustar_modelo_sarimax(
+    modelos['Modelo 2'], mascaras['Modelo 2'] = ajustar_modelo(
         y, X2, (3,1,0), (2,0,0,12),
         "Modelo 2: SARIMAX(3,1,0)(2,0,0) + IGP-DI/IBC-BR lag1"
     )
     
-    # Modelo 3: ARIMAX(0,1,1)(0,1,1) + IGP-DI, IBC-BR, IBC-BR lag1
+    # Modelo 3: SARIMAX(0,1,1)(0,1,1) + IGP-DI, IBC-BR, IBC-BR lag1
     X3 = train[['igp_di', 'ibc_br', 'ibc_br_lag1', 'dias_uteis',
                 'LS2008NOV', 'TC2020APR04', 'TC2022OUT05']]
-    modelos['Modelo 3'] = ajustar_modelo_sarimax(
+    modelos['Modelo 3'], mascaras['Modelo 3'] = ajustar_modelo(
         y, X3, (0,1,1), (0,1,1,12),
         "Modelo 3: SARIMAX(0,1,1)(0,1,1) + IGP-DI/IBC-BR"
     )
     
-    # Modelo 4: ARIMAX(0,1,1)(0,1,2) + IBC-BR, IBC-BR lag1 (sem inflação)
+    # Modelo 4: SARIMAX(0,1,1)(0,1,2) + IBC-BR, IBC-BR lag1 (sem inflação)
     X4 = train[['ibc_br', 'ibc_br_lag1', 'dias_uteis',
                 'LS2008NOV', 'TC2020APR04', 'TC2022OUT05']]
-    modelos['Modelo 4'] = ajustar_modelo_sarimax(
+    modelos['Modelo 4'], mascaras['Modelo 4'] = ajustar_modelo(
         y, X4, (0,1,1), (0,1,2,12),
         "Modelo 4: SARIMAX(0,1,1)(0,1,2) + IBC-BR (sem inflação)"
     )
     
-    # Modelo 5: ARIMAX(0,1,1)(0,1,2) + IGP-DI, IBC-BR, IBC-BR lag1 (sem dias úteis)
+    # Modelo 5: SARIMAX(0,1,1)(0,1,2) + IGP-DI, IBC-BR, IBC-BR lag1 (sem dias úteis)
     X5 = train[['igp_di', 'ibc_br', 'ibc_br_lag1',
                 'LS2008NOV', 'TC2020APR04', 'TC2022OUT05']]
-    modelos['Modelo 5'] = ajustar_modelo_sarimax(
+    modelos['Modelo 5'], mascaras['Modelo 5'] = ajustar_modelo(
         y, X5, (0,1,1), (0,1,2,12),
         "Modelo 5: SARIMAX(0,1,1)(0,1,2) + IGP-DI/IBC-BR (sem dias úteis)"
     )
     
-    # 4. Projeções
+    # 3. Projeções
     print("\n" + "="*60)
     print("PROJEÇÕES 2024-2026")
     print("="*60)
@@ -256,6 +238,7 @@ def main():
     
     for nome, modelo in modelos.items():
         if modelo is None:
+            print(f"   ⚠️ {nome}: pulando (modelo não ajustado)")
             continue
         
         # Preparar X futuro conforme o modelo
@@ -276,12 +259,13 @@ def main():
         
         # Prever
         forecast = modelo.get_forecast(steps=len(future), exog=X_fut)
-        previsoes[nome] = np.exp(forecast.predicted_mean)
+        previsoes[nome] = np.exp(forecast.predicted_mean).values
+        print(f"   ✓ {nome}: projeção gerada")
     
     prev_df = pd.DataFrame(previsoes)
     
     # Média dos modelos
-    col_modelos = [c for c in prev_df.columns if c != 'data']
+    col_modelos = [c for c in prev_df.columns if c != 'data' and c.startswith('Modelo')]
     prev_df['Media'] = prev_df[col_modelos].mean(axis=1)
     
     # Totais anuais
@@ -290,16 +274,43 @@ def main():
         total = prev_df[prev_df['data'].dt.year == ano]['Media'].sum()
         print(f"   {ano}: R$ {total/1e9:.2f} bilhões")
     
-    # Salvar
-    prev_df.to_csv('previsoes_sarimax.csv', index=False)
+    # Salvar resultados detalhados
+    print("\n📁 Salvando resultados...")
+    
+    # Previsões
+    prev_df.to_csv('previsoes_todos_modelos.csv', index=False)
+    print("   ✓ previsoes_todos_modelos.csv")
+    
+    # Base
     df.to_csv('base_final.csv', index=False)
+    print("   ✓ base_final.csv")
+    
+    # Métricas dos modelos
+    metricas = {}
+    for nome, modelo in modelos.items():
+        if modelo is not None:
+            metricas[nome] = {
+                'aic': float(modelo.aic),
+                'bic': float(modelo.bic),
+                'loglik': float(modelo.llf),
+                'observacoes': int(modelo.nobs)
+            }
+    
+    with open('metricas_modelos.json', 'w') as f:
+        json.dump(metricas, f, indent=2)
+    print("   ✓ metricas_modelos.json")
+    
+    print("\n" + "="*60)
+    print("RESUMO DOS MODELOS")
+    print("="*60)
+    for nome, modelo in modelos.items():
+        if modelo is not None:
+            print(f"{nome}: AIC={modelo.aic:.2f}, LogLik={modelo.llf:.2f}")
     
     print("\n" + "="*60)
     print("PIPELINE CONCLUÍDO ✓")
     print("="*60)
-    print("\n📁 Arquivos gerados:")
-    print("   ✓ base_final.csv")
-    print("   ✓ previsoes_sarimax.csv")
+    print(f"\n📊 {len([m for m in modelos.values() if m is not None])}/5 modelos ajustados com sucesso")
 
 
 if __name__ == '__main__':
