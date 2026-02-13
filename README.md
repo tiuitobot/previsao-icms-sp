@@ -92,3 +92,20 @@ python pipeline.py
 
 ---
 *Projeto SEFAZ-SP — 13/02/2026*
+
+## 📊 Modelos SARIMAX Implementados
+
+| Modelo | Especificação | Variáveis Exógenas | AIC |
+|--------|--------------|-------------------|-----|
+| **Modelo 1** | SARIMA(1,1,1) | Dummies | -783.65 |
+| **Modelo 2** | SARIMAX(3,1,0)(2,0,0) | IGP-DI lag1, IBC-BR lag1, Dias úteis, Dummies | -845.22 |
+| **Modelo 3** ⭐ | SARIMAX(0,1,1)(0,1,1) | IGP-DI, IBC-BR, IBC-BR lag1, Dias úteis, Dummies | **-878.56** |
+| **Modelo 4** | SARIMAX(0,1,1)(0,1,2) | IBC-BR, IBC-BR lag1, Dias úteis, Dummies | -817.33 |
+| **Modelo 5** | SARIMAX(0,1,1)(0,1,2) | IGP-DI, IBC-BR, IBC-BR lag1, Dummies | -813.13 |
+
+⭐ **Melhor modelo:** Modelo 3 (menor AIC)
+
+### Diagnósticos
+
+- **Teste ADF:** log(ICMS) estacionário em 1ª diferença (p=0.0008)
+- **Ljung-Box:** Todos os modelos passam no teste de autocorrelação dos resíduos
