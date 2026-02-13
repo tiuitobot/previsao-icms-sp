@@ -1,0 +1,18 @@
+# Dados brutos
+raw_*.csv
+base_*.csv
+
+# Output (mantém no repo)
+# previsoes_icms_2024_2026.csv
+# relatorio_previsao_icms.html
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Excel temporário
+~$*.xlsx
+*.tmp
