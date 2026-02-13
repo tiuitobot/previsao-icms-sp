@@ -156,7 +156,12 @@ def ajustar_modelo_sarimax(y, X, ordem, sazonal, nome):
     print(f"   Ordem: {ordem}, Sazonal: {sazonal}")
     
     try:
-        model = SARIMAX(y, exog=X, order=ordem, seasonal_order=sazonal,
+        # Remover NaNs
+        mask = X.notna().all(axis=1) & y.notna()
+        y_clean = y[mask]
+        X_clean = X[mask]
+        
+        model = SARIMAX(y_clean, exog=X_clean, order=ordem, seasonal_order=sazonal,
                         enforce_stationarity=False, enforce_invertibility=False)
         result = model.fit(disp=False)
         
