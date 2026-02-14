@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Pipeline SARIMAX ICMS-SP — v2.1 (maintained by agent:sefaz)
 """
 Pipeline SEFAZ - Previsão ICMS-SP (v2 - Refatorado)
 Autor: Agente SEFAZ-FIX-001
@@ -192,8 +193,13 @@ def projetar_exogenas(df_hist, horizonte=24):
         m = dt.month - 1 # Indice 0-11
         
         # --- IBC-BR ---
-        # Componente Tendência
-        taxa_tendencia = cresc_mensal_2025 if dt.year == 2025 else cresc_mensal_2026
+        # Componente Tendência (Focus só vai até 2026)
+        if dt.year == 2025:
+            taxa_tendencia = cresc_mensal_2025
+        elif dt.year == 2026:
+            taxa_tendencia = cresc_mensal_2026
+        else:
+            taxa_tendencia = 0.0  # Sem expectativas para anos futuros
         
         # Componente Sazonal (Variação do fator sazonal mês atual vs mês anterior)
         fator_atual = perfil_sazonal[m]
@@ -280,7 +286,9 @@ def main():
     data_corte_treino = pd.to_datetime(DATA_CORTE_HISTORICO) - pd.DateOffset(months=HORIZONTE_VALIDACAO)
     print(f"\n🔍 Validação Out-of-Sample: Treino até {data_corte_treino.strftime('%m/%Y')}")
     
-    df_full = projetar_exogenas(df_hist, horizonte=24) # Projeta além do histórico
+    # Horizonte: até dez/2026 (último ano com expectativas Focus válidas)
+    # De set/2025 (após ago/2025 histórico) até dez/2026 = 16 meses
+    df_full = projetar_exogenas(df_hist, horizonte=16)
     
     # Prepara datasets
     mask_treino = df_full['data'] <= data_corte_treino
@@ -472,6 +480,27 @@ def main():
             f.write(f"* **{ano}:** R$ {vals['mean']/1e9:.2f} bi (IC 95%: {vals['low95']/1e9:.2f} - {vals['high95']/1e9:.2f})\n")
             
     print("📝 relatorio_validacao.md gerado.")
+    
+    # Salvar Totais Anuais em JSON para o PDF
+    totais_anuais_json = {}
+    for ano, vals in totais_anuais.items():
+        totais_anuais_json[str(ano)] = {
+            'mean': float(vals['mean']),
+            'low95': float(vals['low95']),
+            'high95': float(vals['high95']),
+            'realizado_parcial': bool(vals.get('realizado_parcial', False))
+        }
+    
+    with open('totais_anuais_ic.json', 'w') as f:
+        json.dump(totais_anuais_json, f, indent=2)
+    print("📊 totais_anuais_ic.json gerado (para PDF).")
+    
+    # Gerar gráfico de totais anuais com IC
+    import subprocess
+    try:
+        subprocess.run(['.venv/bin/python3', 'gerar_graficos_ic.py'], check=True)
+    except subprocess.CalledProcessError:
+        print("⚠️ Erro ao gerar gráfico de IC anuais.")
 
 if __name__ == '__main__':
     main()

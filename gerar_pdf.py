@@ -33,6 +33,14 @@ def gerar_relatorio_pdf():
     with open('metricas_modelos.json') as f:
         metricas = json.load(f)
     
+    # Carregar totais anuais com IC (se existir)
+    totais_anuais_ic = {}
+    try:
+        with open('totais_anuais_ic.json') as f:
+            totais_anuais_ic = json.load(f)
+    except FileNotFoundError:
+        pass  # Se não existir, continua sem IC
+    
     pdf = PDFRelatorio()
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=15)
@@ -56,13 +64,26 @@ def gerar_relatorio_pdf():
     pdf.set_font('Arial', '', 11)
     pdf.set_text_color(0, 0, 0)
     
-    # Totais anuais
-    for ano in [2024, 2025, 2026]:
-        total = prev[prev['data'].dt.year == ano]['Media'].sum() / 1e9
-        pdf.cell(50, 8, f'Previsão {ano}:', 0, 0)
-        pdf.set_font('Arial', 'B', 11)
-        pdf.cell(0, 8, f'R$ {total:.2f} bilhões', 0, 1)
-        pdf.set_font('Arial', '', 11)
+    # Totais anuais (com IC se disponível)
+    if totais_anuais_ic:
+        for ano in sorted([int(a) for a in totais_anuais_ic.keys()]):
+            dados = totais_anuais_ic[str(ano)]
+            parcial = '*' if dados.get('realizado_parcial', False) else ''
+            pdf.cell(50, 8, f'Previsão {ano}{parcial}:', 0, 0)
+            pdf.set_font('Arial', 'B', 11)
+            mean_bi = dados['mean'] / 1e9
+            low_bi = dados['low95'] / 1e9
+            high_bi = dados['high95'] / 1e9
+            pdf.cell(0, 8, f'R$ {mean_bi:.2f} bi (IC 95%: {low_bi:.2f} - {high_bi:.2f})', 0, 1)
+            pdf.set_font('Arial', '', 11)
+    else:
+        # Fallback se não houver JSON
+        for ano in [2024, 2025, 2026]:
+            total = prev[prev['data'].dt.year == ano]['Media'].sum() / 1e9
+            pdf.cell(50, 8, f'Previsão {ano}:', 0, 0)
+            pdf.set_font('Arial', 'B', 11)
+            pdf.cell(0, 8, f'R$ {total:.2f} bilhões', 0, 1)
+            pdf.set_font('Arial', '', 11)
     
     pdf.ln(5)
     
@@ -145,14 +166,30 @@ def gerar_relatorio_pdf():
     pdf.cell(0, 10, '4. Gráficos', 0, 1)
     pdf.ln(2)
     
-    # Gráfico 1: Série histórica
+    # Gráfico 1: Totais Anuais com IC (DESTAQUE)
     pdf.set_font('Arial', 'B', 12)
     pdf.set_text_color(0, 0, 0)
-    pdf.cell(0, 8, 'Série Histórica e Previsões 2024-2026', 0, 1)
-    pdf.image('grafico_serie_historica.png', x=10, y=None, w=190)
-    pdf.ln(5)
     
-    # Nova página para gráfico 2
+    # Verificar se o gráfico de IC existe
+    import os
+    if os.path.exists('grafico_totais_anuais_ic.png'):
+        pdf.cell(0, 8, 'Totais Anuais com Intervalo de Confiança 95% (Monte Carlo)', 0, 1)
+        pdf.image('grafico_totais_anuais_ic.png', x=10, y=None, w=190)
+        pdf.ln(5)
+        
+        # Gráfico 2: Série histórica
+        pdf.add_page()
+        pdf.set_font('Arial', 'B', 12)
+        pdf.cell(0, 8, 'Série Histórica e Previsões 2024-2026', 0, 1)
+        pdf.image('grafico_serie_historica.png', x=10, y=None, w=190)
+        pdf.ln(5)
+    else:
+        # Se não existir, manter ordem antiga
+        pdf.cell(0, 8, 'Série Histórica e Previsões 2024-2026', 0, 1)
+        pdf.image('grafico_serie_historica.png', x=10, y=None, w=190)
+        pdf.ln(5)
+    
+    # Nova página para gráfico de comparação
     pdf.add_page()
     pdf.set_font('Arial', 'B', 12)
     pdf.cell(0, 8, 'Comparação entre os 5 Modelos SARIMAX', 0, 1)
