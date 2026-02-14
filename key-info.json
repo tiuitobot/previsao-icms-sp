@@ -1,0 +1,61 @@
+{
+  "repo": "previsao-icms-sp",
+  "version": "1.0.0",
+  "lastUpdated": "2026-02-14T04:30",
+  "keyInfo": [
+    {
+      "id": "K001",
+      "info": "SARIMAX com variáveis exógenas laggadas requer máscara booleana para NaN antes do fit: mask = X.notna().all(axis=1) & y.notna(). R auto.arima faz isso internamente; statsmodels não.",
+      "importance": "critical",
+      "status": "confirmed",
+      "date": "2026-02-13",
+      "source": "S-000287 — Models 2-5 falharam sem máscara",
+      "context": "Replicação R→Python dos 5 modelos SARIMAX"
+    },
+    {
+      "id": "K002",
+      "info": "Monte Carlo (1000 paths) para incerteza de ensemble SARIMAX: cada modelo gera distribuição forecast, amostrar de cada, agregar. Melhor que ±std simples. IC com t-Student para n pequeno (5 modelos): Média ± t(0.975,n-1) × s/√n.",
+      "importance": "high",
+      "status": "confirmed",
+      "date": "2026-02-13",
+      "source": "S-000247, S-000282 — E02 enhancement",
+      "context": "Projeção ICMS-SP, 5 modelos SARIMAX com bandas de incerteza"
+    },
+    {
+      "id": "K003",
+      "info": "BCB SGS API: https://api.bcb.gov.br/dados/serie/bcdata.sgs.{code}/dados?formato=json — IBC-BR = 24363. Sem auth. Dados com ~2 meses de lag.",
+      "importance": "high",
+      "status": "active",
+      "date": "2026-02-13",
+      "source": "Pipeline ingestão",
+      "context": "Variável exógena principal (proxy PIB mensal)"
+    },
+    {
+      "id": "K004",
+      "info": "IPEA Data API: http://www.ipeadata.gov.br/api/odata4/ValoresSerie(SERCODIGO='{code}') — IGP-DI mensal = 'IGP12_IGPDIG12'. Falhas intermitentes possíveis; manter fallback local.",
+      "importance": "high",
+      "status": "active",
+      "date": "2026-02-13",
+      "source": "Pipeline ingestão",
+      "context": "Variável exógena (índice de preços)"
+    },
+    {
+      "id": "K005",
+      "info": "BCB Focus API: https://olinda.bcb.gov.br/olinda/servico/Expectativas/versao/v1/odata/ExpectativaMercadoMensais — expectativas mercado (IPCA, PIB, câmbio). Filtro por indicador + data referência.",
+      "importance": "medium",
+      "status": "active",
+      "date": "2026-02-13",
+      "source": "Pipeline ingestão",
+      "context": "Projeções forward-looking como exógenas"
+    },
+    {
+      "id": "K006",
+      "info": "Projeção IBC-BR e IGP-DI para fora da amostra: usar expectativas Focus (mensal) em vez de projeção uniforme. Projeção uniforme ignora sazonalidade e expectativas de mercado — gap identificado na auditoria.",
+      "importance": "high",
+      "status": "confirmed",
+      "date": "2026-02-13",
+      "source": "Auditoria R vs Python (Opus spawn)",
+      "context": "4 gaps críticos identificados; cutoff treino, sazonalidade, expectativas mensais"
+    }
+  ]
+}
