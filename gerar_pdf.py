@@ -210,15 +210,13 @@ def gerar_relatorio_pdf():
     
     pdf.set_font('Arial', '', 10)
     pdf.multi_cell(0, 6, 
-        "Os intervalos de confianca para a media dos modelos foram calculados "
-        "considerando a variancia entre as previsoes dos 5 modelos SARIMAX. "
-        "Utilizamos a distribuicao t-Student com 4 graus de liberdade (n-1):\n\n"
-        "IC 95% = Media +/- t(0.975, 4) x s/raiz(n)\n\n"
-        "Onde:\n"
-        "  - t(0.975, 4) = 2.776\n"
-        "  - s = desvio padrao entre os modelos\n"
-        "  - n = 5 (numero de modelos)\n\n"
-        "Este metodo captura a incerteza devido a escolha da especificacao do modelo."
+        "Os intervalos de confianca foram calculados via Simulacao de Monte Carlo "
+        "(1.000 caminhos por modelo). Para o agregado anual, somamos as trajetorias "
+        "simuladas path-a-path antes de calcular os quantis, preservando a estrutura "
+        "de correlacao temporal (AR/MA) e entre modelos.\n\n"
+        "IC 95% = Quantis 2.5% e 97.5% da distribuicao agregada simulada.\n\n"
+        "Este metodo captura tanto a incerteza dos parametros quanto a incerteza do modelo "
+        "e a dependencia temporal."
     )
     
     # Salvar

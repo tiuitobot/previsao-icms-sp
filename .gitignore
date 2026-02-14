@@ -16,3 +16,5 @@ __pycache__/
 # Excel temporário
 ~$*.xlsx
 *.tmp
+venv/
+.venv/
