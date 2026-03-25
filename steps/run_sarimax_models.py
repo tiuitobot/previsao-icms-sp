@@ -184,17 +184,26 @@ def _run_oos_validation(train_df, y_full, spec,
             pred = fitted.get_forecast(steps=len(test_subset), exog=X_test)
             pred_real = np.exp(pred.predicted_mean).values
 
-            mape = float(np.mean(np.abs((y_test_real - pred_real) / y_test_real)) * 100)
+            # MAPE anual: erro no acumulado de 12 meses (relevante para orçamento)
+            sum_real = float(np.sum(y_test_real))
+            sum_pred = float(np.sum(pred_real))
+            mape_annual = abs((sum_real - sum_pred) / sum_real) * 100 if sum_real != 0 else None
+            # MAPE mensal: erro médio mês a mês (métrica secundária)
+            mape_monthly = float(np.mean(np.abs((y_test_real - pred_real) / y_test_real)) * 100)
 
             window_details.append({
                 "window": w + 1,
                 "status": "ok",
-                "mape": round(mape, 2),
+                "mape_annual": round(mape_annual, 2) if mape_annual is not None else None,
+                "mape_monthly": round(mape_monthly, 2),
+                "mape": round(mape_annual, 2) if mape_annual is not None else round(mape_monthly, 2),
                 "train_size": train_end_idx,
                 "test_start": test_subset["data"].iloc[0].strftime("%Y-%m-%d"),
                 "test_end": test_subset["data"].iloc[-1].strftime("%Y-%m-%d"),
+                "sum_real_brl": round(sum_real / 1e9, 2),
+                "sum_pred_brl": round(sum_pred / 1e9, 2),
             })
-            window_mapes.append(mape)
+            window_mapes.append(mape_annual if mape_annual is not None else mape_monthly)
         except Exception as exc:
             window_details.append({
                 "window": w + 1,
@@ -267,10 +276,13 @@ def _run_ensemble_oos_validation(train_df, y_full, component_specs,
         if not component_preds:
             continue
 
-        # Average the component forecasts, then compute MAPE
+        # Average the component forecasts, then compute MAPE anual (acumulado)
         avg_pred = np.mean(component_preds, axis=0)
-        mape = float(np.mean(np.abs((y_test_real - avg_pred) / y_test_real)) * 100)
-        window_mapes.append(mape)
+        sum_real = float(np.sum(y_test_real))
+        sum_pred = float(np.sum(avg_pred))
+        mape_annual = abs((sum_real - sum_pred) / sum_real) * 100 if sum_real != 0 else None
+        if mape_annual is not None:
+            window_mapes.append(mape_annual)
 
     if not window_mapes:
         return None
