@@ -67,9 +67,16 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
     })
 
     # Check 5: Model convergence -- do models roughly agree?
-    if "ensemble" in annual_totals and len(annual_totals) > 2:
-        for year, ensemble_val in annual_totals.get("ensemble", {}).items():
-            model_vals = [annual_totals[m].get(year, 0) for m in annual_totals if m != "ensemble" and year in annual_totals.get(m, {})]
+    # Filter to simple model entries (skip MC entries like "ensemble_mc", "Modelo 1_mc")
+    simple_models = {k: v for k, v in annual_totals.items()
+                     if not k.endswith("_mc") and k != "ensemble"
+                     and isinstance(v, dict) and all(isinstance(vv, (int, float)) for vv in v.values())}
+    ensemble_simple = annual_totals.get("ensemble", {})
+    if ensemble_simple and isinstance(ensemble_simple, dict) and simple_models:
+        for year, ensemble_val in ensemble_simple.items():
+            if not isinstance(ensemble_val, (int, float)):
+                continue
+            model_vals = [simple_models[m].get(year, 0) for m in simple_models if year in simple_models.get(m, {})]
             if model_vals and ensemble_val > 0:
                 spread = (max(model_vals) - min(model_vals)) / ensemble_val
                 if spread > 0.20:  # > 20% spread
