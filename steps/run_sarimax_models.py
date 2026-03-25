@@ -2,6 +2,7 @@
 import json
 import numpy as np
 import pandas as pd
+from itertools import combinations
 from pathlib import Path
 import warnings
 warnings.filterwarnings("ignore")
@@ -13,6 +14,10 @@ from statsmodels.tsa.stattools import adfuller
 # Monte Carlo configuration
 N_SIMULATIONS = 1000
 MC_PERCENTILES = [5, 25, 50, 75, 95]
+
+# Rolling OOS validation windows
+OOS_N_WINDOWS = 5
+OOS_WINDOW_SIZE = 12  # months per window
 
 
 def _to_python(obj):
@@ -123,42 +128,153 @@ def _run_monte_carlo(fitted_result, n_steps, exog_future, n_simulations=N_SIMULA
         return None
 
 
-def _run_oos_validation(train_df, y_full, spec, holdout_months=12):
-    """Out-of-sample validation: hold out last N months, fit on rest, compute MAPE.
+def _run_oos_validation(train_df, y_full, spec,
+                        n_windows=OOS_N_WINDOWS,
+                        window_size=OOS_WINDOW_SIZE):
+    """Rolling out-of-sample validation with 5 windows.
 
-    Returns dict with mape, status, and details; or error info on failure.
+    Windows (T = last observation index):
+      Window 1: train up to T-60, test T-60 to T-48
+      Window 2: train up to T-48, test T-48 to T-36
+      Window 3: train up to T-36, test T-36 to T-24
+      Window 4: train up to T-24, test T-24 to T-12
+      Window 5: train up to T-12, test T-12 to T
+
+    Returns dict with per-window MAPEs and the average MAPE across windows.
     """
     n_total = len(train_df)
-    if n_total <= holdout_months + 24:
-        # Not enough data for meaningful validation
-        return {"status": "insufficient_data", "mape": None}
+    total_holdout_needed = n_windows * window_size  # 60 months
+    min_train = 24  # minimum training observations
 
-    train_subset = train_df.iloc[:-holdout_months].copy()
-    test_subset = train_df.iloc[-holdout_months:].copy()
+    if n_total < total_holdout_needed + min_train:
+        return {"status": "insufficient_data", "mape": None, "windows": []}
 
-    y_train = y_full.iloc[:-holdout_months].copy()
-    y_test_real = test_subset["icms_sp"].astype(float).values
+    window_mapes = []
+    window_details = []
 
-    try:
-        X_train = train_subset[spec["exog_cols"]].astype(float)
-        X_test = test_subset[spec["exog_cols"]].astype(float)
+    for w in range(n_windows):
+        # Window w: test_end offset from T
+        # w=0 → test is [T-60, T-48), w=1 → [T-48, T-36), ...
+        test_end_offset = (n_windows - 1 - w) * window_size  # from end
+        test_start_offset = test_end_offset + window_size
 
-        fitted = _fit_model(y_train, X_train, spec["order"], spec["seasonal_order"])
-        pred = fitted.get_forecast(steps=len(test_subset), exog=X_test)
-        pred_real = np.exp(pred.predicted_mean).values
+        train_end_idx = n_total - test_start_offset
+        test_start_idx = n_total - test_start_offset
+        test_end_idx = n_total - test_end_offset if test_end_offset > 0 else n_total
 
-        # MAPE: Mean Absolute Percentage Error
-        mape = float(np.mean(np.abs((y_test_real - pred_real) / y_test_real)) * 100)
+        if train_end_idx < min_train:
+            window_details.append({
+                "window": w + 1,
+                "status": "insufficient_train_data",
+                "mape": None
+            })
+            continue
 
-        return {
-            "status": "ok",
-            "mape": round(mape, 2),
-            "holdout_months": holdout_months,
-            "holdout_start": test_subset["data"].iloc[0].strftime("%Y-%m-%d"),
-            "holdout_end": test_subset["data"].iloc[-1].strftime("%Y-%m-%d"),
-        }
-    except Exception as exc:
-        return {"status": "error", "mape": None, "error": str(exc)}
+        train_subset = train_df.iloc[:train_end_idx].copy()
+        test_subset = train_df.iloc[test_start_idx:test_end_idx].copy()
+
+        y_train = y_full.iloc[:train_end_idx].copy()
+        y_test_real = test_subset["icms_sp"].astype(float).values
+
+        try:
+            X_train = train_subset[spec["exog_cols"]].astype(float)
+            X_test = test_subset[spec["exog_cols"]].astype(float)
+
+            fitted = _fit_model(y_train, X_train, spec["order"], spec["seasonal_order"])
+            pred = fitted.get_forecast(steps=len(test_subset), exog=X_test)
+            pred_real = np.exp(pred.predicted_mean).values
+
+            mape = float(np.mean(np.abs((y_test_real - pred_real) / y_test_real)) * 100)
+
+            window_details.append({
+                "window": w + 1,
+                "status": "ok",
+                "mape": round(mape, 2),
+                "train_size": train_end_idx,
+                "test_start": test_subset["data"].iloc[0].strftime("%Y-%m-%d"),
+                "test_end": test_subset["data"].iloc[-1].strftime("%Y-%m-%d"),
+            })
+            window_mapes.append(mape)
+        except Exception as exc:
+            window_details.append({
+                "window": w + 1,
+                "status": "error",
+                "mape": None,
+                "error": str(exc)
+            })
+
+    avg_mape = round(float(np.mean(window_mapes)), 2) if window_mapes else None
+
+    return {
+        "status": "ok" if window_mapes else "all_windows_failed",
+        "mape": avg_mape,
+        "n_windows_ok": len(window_mapes),
+        "n_windows_total": n_windows,
+        "windows": window_details,
+    }
+
+
+def _run_ensemble_oos_validation(train_df, y_full, component_specs,
+                                 n_windows=OOS_N_WINDOWS,
+                                 window_size=OOS_WINDOW_SIZE):
+    """Rolling OOS validation for an ensemble (average of component forecasts).
+
+    In each window, fits all component models, averages their forecasts,
+    then computes MAPE of the averaged forecast vs actuals.
+
+    Returns average MAPE across windows.
+    """
+    n_total = len(train_df)
+    total_holdout_needed = n_windows * window_size
+    min_train = 24
+
+    if n_total < total_holdout_needed + min_train:
+        return None
+
+    window_mapes = []
+
+    for w in range(n_windows):
+        test_end_offset = (n_windows - 1 - w) * window_size
+        test_start_offset = test_end_offset + window_size
+
+        train_end_idx = n_total - test_start_offset
+        test_start_idx = n_total - test_start_offset
+        test_end_idx = n_total - test_end_offset if test_end_offset > 0 else n_total
+
+        if train_end_idx < min_train:
+            continue
+
+        train_subset = train_df.iloc[:train_end_idx].copy()
+        test_subset = train_df.iloc[test_start_idx:test_end_idx].copy()
+
+        y_train = y_full.iloc[:train_end_idx].copy()
+        y_test_real = test_subset["icms_sp"].astype(float).values
+
+        # Fit each component and collect forecasts
+        component_preds = []
+        for spec_name, spec in component_specs.items():
+            try:
+                X_train = train_subset[spec["exog_cols"]].astype(float)
+                X_test = test_subset[spec["exog_cols"]].astype(float)
+                fitted = _fit_model(y_train, X_train, spec["order"], spec["seasonal_order"])
+                pred = fitted.get_forecast(steps=len(test_subset), exog=X_test)
+                pred_real = np.exp(pred.predicted_mean).values
+                component_preds.append(pred_real)
+            except Exception:
+                # Skip this component for this window
+                continue
+
+        if not component_preds:
+            continue
+
+        # Average the component forecasts, then compute MAPE
+        avg_pred = np.mean(component_preds, axis=0)
+        mape = float(np.mean(np.abs((y_test_real - avg_pred) / y_test_real)) * 100)
+        window_mapes.append(mape)
+
+    if not window_mapes:
+        return None
+    return round(float(np.mean(window_mapes)), 2)
 
 
 def _load(od: Path, name: str) -> dict:
@@ -180,8 +296,32 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
 
     train_df = pd.DataFrame(train_records)
     train_df["data"] = pd.to_datetime(train_df["data"])
-    future_df = pd.DataFrame(future_records)
-    future_df["data"] = pd.to_datetime(future_df["data"])
+
+    # --- Change 3: Forecast horizon ---
+    # Find last ICMS observation date, forecast from next month to Dec of following year
+    last_icms_date = train_df["data"].max()
+    forecast_start = last_icms_date + pd.DateOffset(months=1)
+    forecast_end_year = last_icms_date.year + 1
+    forecast_end = pd.Timestamp(f"{forecast_end_year}-12-31")
+
+    full_future_df = pd.DataFrame(future_records)
+    full_future_df["data"] = pd.to_datetime(full_future_df["data"])
+
+    # Filter future_data to the desired horizon
+    future_df = full_future_df[
+        (full_future_df["data"] >= forecast_start) &
+        (full_future_df["data"] <= forecast_end)
+    ].copy().reset_index(drop=True)
+
+    if future_df.empty:
+        return {
+            "status": "error",
+            "message": (
+                f"No future data in range {forecast_start.strftime('%Y-%m')} "
+                f"to {forecast_end.strftime('%Y-%m')}. "
+                f"Last ICMS observation: {last_icms_date.strftime('%Y-%m-%d')}"
+            )
+        }
 
     # Run all 5 models by default
     model_names = list(MODEL_SPECS.keys())
@@ -197,6 +337,8 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
     diagnostics_output = {}
     # Monte Carlo: collect simulation paths per model (real scale, shape: [N_SIMULATIONS, n_future])
     mc_simulations = {}
+    # Per-model OOS MAPE (for ensemble building)
+    individual_mapes = {}
 
     for name in model_names:
         spec = MODEL_SPECS.get(name)
@@ -207,7 +349,7 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
             X_train = train_df[spec["exog_cols"]].astype(float)
             result = _fit_model(y, X_train, spec["order"], spec["seasonal_order"])
 
-            # --- Out-of-sample validation (MAPE) ---
+            # --- Out-of-sample validation (rolling 5-window MAPE) ---
             oos_result = _run_oos_validation(train_df, y, spec)
 
             # Diagnostics — Ljung-Box with NaN-safe residual handling
@@ -245,6 +387,10 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
                 diag_entry["ljung_box_error"] = lb_error
 
             diagnostics_output[name] = diag_entry
+
+            # Track individual MAPE for all_candidates
+            if oos_result.get("mape") is not None:
+                individual_mapes[name] = oos_result["mape"]
 
             # Coefficients
             models_output[name] = {
@@ -287,8 +433,64 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
             diagnostics_output[name] = {"error": str(e)}
             models_output[name] = {"error": str(e)}
 
-    # Ensemble mean (point forecasts — backward compat)
+    # =========================================================================
+    # All 31 ensemble combinations
+    # =========================================================================
     valid_models = [n for n in model_names if n in forecasts_output and isinstance(forecasts_output[n], list)]
+
+    # Build all_candidates: individual models + all ensemble combos
+    all_candidates = {}
+
+    # 1) Individual models
+    for name in valid_models:
+        mape_val = individual_mapes.get(name)
+        all_candidates[name] = {
+            "mape": mape_val,
+            "type": "individual",
+            "components": [name],
+        }
+
+    # 2) All ensemble combinations (pairs, triples, quadruples, quintuple)
+    for combo_size in range(2, len(valid_models) + 1):
+        for combo in combinations(valid_models, combo_size):
+            combo_name = "Ensemble(" + ",".join(
+                m.replace("Modelo ", "M") for m in combo
+            ) + ")"
+            component_specs = {m: MODEL_SPECS[m] for m in combo}
+            ensemble_mape = _run_ensemble_oos_validation(
+                train_df, y, component_specs
+            )
+            all_candidates[combo_name] = {
+                "mape": ensemble_mape,
+                "type": "ensemble",
+                "components": list(combo),
+            }
+
+    # Find best candidate overall (lowest MAPE)
+    candidates_with_mape = {
+        k: v for k, v in all_candidates.items() if v["mape"] is not None
+    }
+    if candidates_with_mape:
+        best_candidate_name = min(
+            candidates_with_mape, key=lambda k: candidates_with_mape[k]["mape"]
+        )
+        best_candidate_mape = candidates_with_mape[best_candidate_name]["mape"]
+    else:
+        best_candidate_name = None
+        best_candidate_mape = None
+
+    # Top 5 ensemble candidates by MAPE
+    ensemble_candidates = {
+        k: v for k, v in candidates_with_mape.items() if v["type"] == "ensemble"
+    }
+    top5_ensembles = sorted(
+        ensemble_candidates.items(), key=lambda x: x[1]["mape"]
+    )[:5]
+    top5_ensembles = [
+        {"name": name, **info} for name, info in top5_ensembles
+    ]
+
+    # Ensemble mean (point forecasts — backward compat, uses all valid models)
     ensemble = []
     if valid_models:
         n_periods = len(forecasts_output[valid_models[0]])
@@ -303,9 +505,14 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
             })
 
     # =========================================================================
-    # Monte Carlo ensemble: stack all simulation paths across models
+    # Monte Carlo ensemble: use best candidate's components
     # =========================================================================
-    mc_models_used = [n for n in valid_models if n in mc_simulations]
+    if best_candidate_name and best_candidate_name in all_candidates:
+        best_components = all_candidates[best_candidate_name]["components"]
+        mc_models_used = [n for n in best_components if n in mc_simulations]
+    else:
+        mc_models_used = [n for n in valid_models if n in mc_simulations]
+
     mc_confidence_intervals = []
     mc_ensemble_paths = None
 
@@ -361,7 +568,8 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
         annual_totals["ensemble_mc"] = mc_annual
 
         # Per-model annual CIs from Monte Carlo
-        for name in mc_models_used:
+        all_mc_models = [n for n in valid_models if n in mc_simulations]
+        for name in all_mc_models:
             model_sims = mc_simulations[name]  # [N_SIMULATIONS, n_future]
             mc_model_annual = {}
             for yr in unique_years:
@@ -377,14 +585,9 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
                 mc_model_annual[str(yr)] = yr_entry
             annual_totals[f"{name}_mc"] = mc_model_annual
 
-    # Best model by AIC
+    # Best model by AIC (backward compat)
     valid_diag = {n: d for n, d in diagnostics_output.items() if "aic" in d}
-    best_model = min(valid_diag, key=lambda n: valid_diag[n]["aic"]) if valid_diag else None
-
-    # Best model by MAPE (out-of-sample)
-    valid_mape = {n: d["mape"] for n, d in diagnostics_output.items()
-                  if "mape" in d and d.get("mape") is not None}
-    best_model_mape = min(valid_mape, key=lambda n: valid_mape[n]) if valid_mape else None
+    best_model_aic = min(valid_diag, key=lambda n: valid_diag[n]["aic"]) if valid_diag else None
 
     # Confidence intervals from Monte Carlo
     confidence_intervals = {
@@ -394,10 +597,10 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
     }
     if mc_confidence_intervals:
         confidence_intervals["intervals"] = mc_confidence_intervals
-    elif best_model and best_model in forecasts_output:
+    elif best_model_aic and best_model_aic in forecasts_output:
         # Fallback to analytical CI from best model
-        confidence_intervals["model"] = best_model
-        confidence_intervals["intervals"] = forecasts_output[best_model]
+        confidence_intervals["model"] = best_model_aic
+        confidence_intervals["intervals"] = forecasts_output[best_model_aic]
 
     result = {
         "models": models_output,
@@ -406,8 +609,16 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
         "ensemble_mean": ensemble,
         "confidence_intervals": confidence_intervals,
         "annual_totals": annual_totals,
-        "best_model": best_model,
-        "best_model_mape": best_model_mape,
+        "best_model": best_candidate_name,
+        "best_model_mape": best_candidate_mape,
+        "all_candidates": all_candidates,
+        "top5_ensembles": top5_ensembles,
+        "forecast_horizon": {
+            "last_icms_observation": last_icms_date.strftime("%Y-%m-%d"),
+            "forecast_start": forecast_start.strftime("%Y-%m-%d"),
+            "forecast_end": forecast_end.strftime("%Y-%m-%d"),
+            "n_months": n_future,
+        },
         "adf_test": {
             "statistic": round(_to_python(adf_result[0]), 4),
             "p_value": round(_to_python(adf_result[1]), 4),
@@ -418,6 +629,7 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
             "percentiles_used": MC_PERCENTILES,
             "models_simulated": len(mc_models_used),
             "models_failed": len(valid_models) - len(mc_models_used),
+            "best_candidate_components": mc_models_used,
         },
         "n_models_fitted": len(valid_models),
         "status": "ok"
