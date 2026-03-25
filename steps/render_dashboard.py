@@ -439,17 +439,17 @@ def _build_scenario_summary(sarimax: dict) -> str:
                 <div class="scenario-card scenario-pessimistic">
                     <div class="scenario-icon">&#9660;</div>
                     <div class="scenario-label">Pessimista (P5)</div>
-                    <div class="scenario-value">{_fmt_brl(pessimistic)}</div>
+                    <div class="scenario-value" id="scenario-pessimistic-{year}">{_fmt_brl(pessimistic)}</div>
                 </div>
                 <div class="scenario-card scenario-base">
                     <div class="scenario-icon">&#9654;</div>
                     <div class="scenario-label">Base (Mediana)</div>
-                    <div class="scenario-value">{_fmt_brl(base)}</div>
+                    <div class="scenario-value" id="scenario-base-{year}">{_fmt_brl(base)}</div>
                 </div>
                 <div class="scenario-card scenario-optimistic">
                     <div class="scenario-icon">&#9650;</div>
                     <div class="scenario-label">Otimista (P95)</div>
-                    <div class="scenario-value">{_fmt_brl(optimistic)}</div>
+                    <div class="scenario-value" id="scenario-optimistic-{year}">{_fmt_brl(optimistic)}</div>
                 </div>
             </div>
         </div>
@@ -1271,7 +1271,45 @@ CSS = """
         header, .kpi-row, .content, .data-context-bar { padding-left: 1rem; padding-right: 1rem; }
         .kpi-value { font-size: 1.4rem; }
         .data-context-bar { flex-direction: column; }
+        .model-dropdown { max-height: 300px; }
     }
+
+    /* Model selector */
+    .model-selector { cursor: pointer; position: relative; }
+    .model-selector:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+    .selector-hint { font-size: 0.7rem; color: #a0aec0; margin-top: 0.3rem; }
+    .model-dropdown {
+        position: absolute; top: 100%; left: 0; right: 0; z-index: 100;
+        background: white; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+        max-height: 400px; overflow-y: auto; padding: 0.5rem;
+    }
+    .model-dropdown input {
+        width: calc(100% - 1rem); padding: 0.5rem; border: 1px solid #e2e8f0; border-radius: 4px;
+        margin-bottom: 0.5rem; font-size: 0.85rem; outline: none;
+    }
+    .model-dropdown input:focus { border-color: var(--accent); }
+    .model-option {
+        display: flex; justify-content: space-between; padding: 0.5rem;
+        cursor: pointer; border-radius: 4px; font-size: 0.82rem; align-items: center;
+    }
+    .model-option:hover { background: #ebf8ff; }
+    .model-option.best { background: #f0fff4; font-weight: 600; }
+    .model-option .opt-name { flex: 1; text-align: left; }
+    .model-option .opt-type {
+        font-size: 0.65rem; padding: 0.1rem 0.35rem; border-radius: 3px;
+        margin: 0 0.4rem; text-transform: uppercase; font-weight: 600; letter-spacing: 0.02em;
+    }
+    .model-option .opt-type-individual { background: #ebf8ff; color: var(--accent); }
+    .model-option .opt-type-ensemble { background: #faf5ff; color: #805ad5; }
+    .model-option .opt-mape { font-family: 'JetBrains Mono','Consolas',monospace; font-size: 0.78rem; color: var(--text-light); }
+
+    /* KPI value animation */
+    @keyframes kpiFlash {
+        0% { opacity: 0.3; transform: scale(0.95); }
+        50% { opacity: 1; transform: scale(1.03); }
+        100% { opacity: 1; transform: scale(1); }
+    }
+    .kpi-flash { animation: kpiFlash 0.35s ease-out; }
 
     /* Print */
     @media print {
@@ -1279,6 +1317,8 @@ CSS = """
         header { background: var(--primary) !important; -webkit-print-color-adjust: exact; }
         .kpi-card, section { box-shadow: none; border: 1px solid #ddd; }
         details[open] summary ~ * { display: block; }
+        .model-dropdown { display: none !important; }
+        .selector-hint { display: none; }
     }
 """
 
@@ -1389,6 +1429,79 @@ def main(*, output_dir: str = "", template_name: str = "", **kwargs) -> dict:
     best_aic = diagnostics.get(best_model, {}).get("aic", "N/A") if best_model != "N/A" else "N/A"
     n_models = sarimax.get("n_models_fitted", 0)
 
+    # --- Build CANDIDATES JS data for interactive selector ---
+    all_candidates = sarimax.get("all_candidates", {})
+    all_annual_totals = sarimax.get("annual_totals", {})
+    all_forecasts = sarimax.get("forecasts", {})
+    ensemble_mc = all_annual_totals.get("ensemble_mc", {})
+    candidates_js = {}
+
+    for cand_name, cand_info in all_candidates.items():
+        cand_type = cand_info.get("type", "individual")
+        cand_mape = cand_info.get("mape")
+        cand_weights = cand_info.get("weights", {})
+        cand_components = cand_info.get("components", [])
+
+        # Compute annual totals for this candidate
+        cand_annual = {}
+        if cand_type == "individual" and cand_name in all_annual_totals:
+            # Direct lookup
+            for year, val in all_annual_totals[cand_name].items():
+                cand_annual[year] = round(val, 2) if isinstance(val, (int, float)) else val
+        elif cand_type == "ensemble" and cand_weights:
+            # Weighted combination from component forecasts
+            years_set = set()
+            for comp in cand_components:
+                if comp in all_annual_totals and isinstance(all_annual_totals[comp], dict):
+                    years_set.update(all_annual_totals[comp].keys())
+            for year in sorted(years_set):
+                weighted_sum = 0.0
+                total_weight = 0.0
+                for comp, w in cand_weights.items():
+                    comp_val = all_annual_totals.get(comp, {}).get(year)
+                    if comp_val is not None and isinstance(comp_val, (int, float)):
+                        weighted_sum += comp_val * w
+                        total_weight += w
+                if total_weight > 0:
+                    cand_annual[year] = round(weighted_sum / total_weight, 2)
+        elif cand_type == "ensemble":
+            # No weights — simple average from components
+            years_set = set()
+            for comp in cand_components:
+                if comp in all_annual_totals and isinstance(all_annual_totals[comp], dict):
+                    years_set.update(all_annual_totals[comp].keys())
+            for year in sorted(years_set):
+                vals = []
+                for comp in cand_components:
+                    v = all_annual_totals.get(comp, {}).get(year)
+                    if v is not None and isinstance(v, (int, float)):
+                        vals.append(v)
+                if vals:
+                    cand_annual[year] = round(sum(vals) / len(vals), 2)
+
+        # CI data — only the best model (ensemble) has MC confidence intervals
+        cand_ci = None
+        if cand_name == best_model and ensemble_mc:
+            cand_ci = {}
+            for year, mc_data in ensemble_mc.items():
+                if isinstance(mc_data, dict):
+                    cand_ci[year] = {
+                        "low_95": round(mc_data.get("low_95", 0), 2),
+                        "median": round(mc_data.get("median", 0), 2),
+                        "high_95": round(mc_data.get("high_95", 0), 2),
+                    }
+
+        candidates_js[cand_name] = {
+            "mape": cand_mape,
+            "type": cand_type,
+            "weights": cand_weights,
+            "components": cand_components,
+            "annual": cand_annual,
+            "annual_ci": cand_ci,
+        }
+
+    candidates_json_str = json.dumps(candidates_js, ensure_ascii=False, indent=2)
+
     # Load Plotly JS inline (no CDN dependency)
     try:
         import plotly
@@ -1408,21 +1521,34 @@ def main(*, output_dir: str = "", template_name: str = "", **kwargs) -> dict:
             </script>
             """)
 
-    # KPIs
+    # KPIs — annual forecast cards with IDs for JS updates
     kpi_html = ""
     for year, value in sorted(annual_totals.items()):
         kpi_html += f"""
         <div class="kpi-card">
-            <div class="kpi-value">{_fmt_brl(value)}</div>
+            <div class="kpi-value" id="kpi-annual-{year}">{_fmt_brl(value)}</div>
             <div class="kpi-label">ICMS-SP {year}</div>
         </div>
         """
 
-    # Best model KPI
+    # Best model KPI — interactive selector
+    best_mape_display = ""
+    if best_model in all_candidates:
+        bm_mape = all_candidates[best_model].get("mape")
+        if bm_mape is not None:
+            best_mape_display = f"MAPE {bm_mape:.2f}%"
+    if not best_mape_display:
+        best_mape_display = f"AIC: {best_aic}"
+
     kpi_html += f"""
-    <div class="kpi-card">
-        <div class="kpi-value" style="font-size:1.3rem;">{best_model}</div>
-        <div class="kpi-label">Melhor modelo (AIC: {best_aic})</div>
+    <div class="kpi-card model-selector" onclick="toggleModelDropdown()">
+        <div class="kpi-value" id="best-model-name" style="font-size:1.3rem;">{best_model}</div>
+        <div class="kpi-label" id="best-model-mape">{best_mape_display}</div>
+        <div class="selector-hint">&#9660; Clique para trocar</div>
+        <div id="model-dropdown" class="model-dropdown" style="display:none;" onclick="event.stopPropagation();">
+            <input type="text" id="model-search" placeholder="Filtrar..." oninput="filterModels()">
+            <div id="model-list"></div>
+        </div>
     </div>
     """
 
@@ -1525,6 +1651,136 @@ def main(*, output_dir: str = "", template_name: str = "", **kwargs) -> dict:
     <footer>
         Pipeline Engine v1 &mdash; SEFAZ ICMS-SP &mdash; Gerado automaticamente em {now_str}
     </footer>
+
+    <script>
+    // --- Model/Ensemble Selector ---
+    const CANDIDATES = {candidates_json_str};
+    const BEST_MODEL = {json.dumps(best_model, ensure_ascii=False)};
+
+    function fmtBrl(val) {{
+        if (val == null || isNaN(val)) return "N/D";
+        var s = val.toFixed(2).replace(".", ",");
+        var parts = s.split(",");
+        parts[0] = parts[0].replace(/\\B(?=(\\d{{3}})+(?!\\d))/g, ".");
+        return "R$ " + parts.join(",") + " bi";
+    }}
+
+    function flashEl(el) {{
+        el.classList.remove("kpi-flash");
+        void el.offsetWidth; // trigger reflow
+        el.classList.add("kpi-flash");
+    }}
+
+    function toggleModelDropdown() {{
+        var dd = document.getElementById("model-dropdown");
+        if (dd.style.display === "none") {{
+            dd.style.display = "block";
+            populateModelList("");
+            var inp = document.getElementById("model-search");
+            inp.value = "";
+            setTimeout(function(){{ inp.focus(); }}, 50);
+        }} else {{
+            dd.style.display = "none";
+        }}
+    }}
+
+    function filterModels() {{
+        var q = document.getElementById("model-search").value.toLowerCase();
+        populateModelList(q);
+    }}
+
+    function populateModelList(filter) {{
+        var list = document.getElementById("model-list");
+        // Sort candidates by MAPE ascending
+        var entries = Object.entries(CANDIDATES).map(function(e) {{
+            return {{ name: e[0], data: e[1] }};
+        }});
+        entries.sort(function(a, b) {{
+            var ma = a.data.mape != null ? a.data.mape : 9999;
+            var mb = b.data.mape != null ? b.data.mape : 9999;
+            return ma - mb;
+        }});
+
+        var html = "";
+        for (var i = 0; i < entries.length; i++) {{
+            var e = entries[i];
+            if (filter && e.name.toLowerCase().indexOf(filter) === -1 && e.data.type.toLowerCase().indexOf(filter) === -1) continue;
+            var isBest = (e.name === BEST_MODEL) ? " best" : "";
+            var typeCls = e.data.type === "individual" ? "opt-type-individual" : "opt-type-ensemble";
+            var typeLabel = e.data.type === "individual" ? "individual" : "ensemble";
+            var mapeStr = e.data.mape != null ? e.data.mape.toFixed(2) + "%" : "—";
+            html += '<div class="model-option' + isBest + '" onclick="selectCandidate(\'' + e.name.replace(/'/g, "\\\\'") + '\')">';
+            html += '<span class="opt-name">' + e.name + '</span>';
+            html += '<span class="opt-type ' + typeCls + '">' + typeLabel + '</span>';
+            html += '<span class="opt-mape">' + mapeStr + '</span>';
+            html += '</div>';
+        }}
+        list.innerHTML = html;
+    }}
+
+    function selectCandidate(name) {{
+        var c = CANDIDATES[name];
+        if (!c) return;
+
+        // Update model KPI
+        var nameEl = document.getElementById("best-model-name");
+        var mapeEl = document.getElementById("best-model-mape");
+        nameEl.textContent = name;
+        mapeEl.textContent = c.mape != null ? "MAPE " + c.mape.toFixed(2) + "%" : "—";
+        flashEl(nameEl);
+        flashEl(mapeEl);
+
+        // Update annual KPIs
+        for (var year in c.annual) {{
+            var el = document.getElementById("kpi-annual-" + year);
+            if (el) {{
+                el.textContent = fmtBrl(c.annual[year]);
+                flashEl(el);
+            }}
+        }}
+
+        // Update scenario cards
+        updateScenarios(c);
+
+        // Close dropdown
+        document.getElementById("model-dropdown").style.display = "none";
+    }}
+
+    function updateScenarios(c) {{
+        if (c.annual_ci) {{
+            for (var year in c.annual_ci) {{
+                var ci = c.annual_ci[year];
+                var pessEl = document.getElementById("scenario-pessimistic-" + year);
+                var baseEl = document.getElementById("scenario-base-" + year);
+                var optEl = document.getElementById("scenario-optimistic-" + year);
+                if (pessEl) {{ pessEl.textContent = fmtBrl(ci.low_95); flashEl(pessEl); }}
+                if (baseEl) {{ baseEl.textContent = fmtBrl(ci.median); flashEl(baseEl); }}
+                if (optEl) {{ optEl.textContent = fmtBrl(ci.high_95); flashEl(optEl); }}
+            }}
+        }} else {{
+            // No MC CI data for this candidate
+            var years = Object.keys(c.annual);
+            for (var i = 0; i < years.length; i++) {{
+                var year = years[i];
+                var pessEl = document.getElementById("scenario-pessimistic-" + year);
+                var baseEl = document.getElementById("scenario-base-" + year);
+                var optEl = document.getElementById("scenario-optimistic-" + year);
+                if (pessEl) {{ pessEl.textContent = "N/D"; flashEl(pessEl); }}
+                if (baseEl) {{ baseEl.textContent = fmtBrl(c.annual[year]); flashEl(baseEl); }}
+                if (optEl) {{ optEl.textContent = "N/D"; flashEl(optEl); }}
+            }}
+        }}
+    }}
+
+    // Close dropdown when clicking outside
+    document.addEventListener("click", function(e) {{
+        var selector = document.querySelector(".model-selector");
+        var dd = document.getElementById("model-dropdown");
+        if (selector && dd && !selector.contains(e.target)) {{
+            dd.style.display = "none";
+        }}
+    }});
+    </script>
 </body>
 </html>"""
 
