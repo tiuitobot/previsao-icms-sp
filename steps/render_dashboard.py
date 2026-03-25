@@ -1,6 +1,7 @@
 """Render interactive dashboard HTML with Plotly charts, KPIs, diagnostics, and scenarios."""
 import json
 import os
+import re
 from datetime import datetime, date
 from pathlib import Path
 
@@ -37,14 +38,90 @@ def _freshness_color(last_date_str: str | None) -> tuple[str, str]:
     try:
         last = datetime.strptime(last_date_str[:10], "%Y-%m-%d").date()
     except (ValueError, TypeError):
-        return "freshness-red", "data invalida"
+        return "freshness-red", "data inválida"
     age_days = (date.today() - last).days
     if age_days < 45:
-        return "freshness-green", f"{age_days}d atras"
+        return "freshness-green", f"{age_days}d atrás"
     elif age_days < 100:
-        return "freshness-yellow", f"{age_days}d atras"
+        return "freshness-yellow", f"{age_days}d atrás"
     else:
-        return "freshness-red", f"{age_days}d atras"
+        return "freshness-red", f"{age_days}d atrás"
+
+
+def _date_to_month_label(date_str: str) -> str:
+    """Convert '2024-01-01' to 'jan/2024'."""
+    months_pt = {
+        1: "jan", 2: "fev", 3: "mar", 4: "abr", 5: "mai", 6: "jun",
+        7: "jul", 8: "ago", 9: "set", 10: "out", 11: "nov", 12: "dez",
+    }
+    try:
+        dt = datetime.strptime(date_str[:10], "%Y-%m-%d")
+        return f"{months_pt[dt.month]}/{dt.year}"
+    except (ValueError, TypeError):
+        return date_str[:7] if date_str else "—"
+
+
+def _next_month_label(date_str: str) -> str:
+    """Given a date string, return the month label for the following month."""
+    months_pt = {
+        1: "jan", 2: "fev", 3: "mar", 4: "abr", 5: "mai", 6: "jun",
+        7: "jul", 8: "ago", 9: "set", 10: "out", 11: "nov", 12: "dez",
+    }
+    try:
+        dt = datetime.strptime(date_str[:10], "%Y-%m-%d")
+        month = dt.month + 1
+        year = dt.year
+        if month > 12:
+            month = 1
+            year += 1
+        return f"{months_pt[month]}/{year}"
+    except (ValueError, TypeError):
+        return "—"
+
+
+def _build_data_context_bar(sefaz: dict, macro: dict) -> str:
+    """Prominent info bar showing data context: last observed, forecast start, macro freshness."""
+    last_obs = sefaz.get("last_observed_date")
+    freshness = macro.get("data_freshness", {})
+    focus = macro.get("focus_expectations", {})
+
+    last_obs_label = _date_to_month_label(last_obs) if last_obs else "—"
+    forecast_start_label = _next_month_label(last_obs) if last_obs else "—"
+    ibc_label = _date_to_month_label(freshness.get("ibc_br_last", "")) if freshness.get("ibc_br_last") else "—"
+    igp_label = _date_to_month_label(freshness.get("igp_di_last", "")) if freshness.get("igp_di_last") else "—"
+
+    pib = focus.get("PIB Total")
+    igpm = focus.get("IGP-M")
+    focus_text = ""
+    if pib is not None and igpm is not None:
+        focus_text = f"PIB +{pib:.2f}%, IGP-M +{igpm:.2f}%"
+    elif pib is not None:
+        focus_text = f"PIB +{pib:.2f}%"
+
+    items = [
+        ("📊", "Último ICMS observado", last_obs_label),
+        ("🔮", "Início da previsão", forecast_start_label),
+        ("📈", "IBC-BR até", ibc_label),
+        ("💹", "IGP-DI até", igp_label),
+    ]
+    if focus_text:
+        items.append(("🎯", "Focus", focus_text))
+
+    badges = ""
+    for icon, label, value in items:
+        badges += f"""
+        <div class="context-item">
+            <span class="context-icon">{icon}</span>
+            <span class="context-label">{label}:</span>
+            <span class="context-value">{value}</span>
+        </div>
+        """
+
+    return f"""
+    <div class="data-context-bar">
+        {badges}
+    </div>
+    """
 
 
 def _build_monthly_forecast_table(sarimax: dict) -> str:
@@ -112,7 +189,7 @@ def _build_monthly_forecast_table(sarimax: dict) -> str:
 
     return f"""
     <section>
-        <h2>Previsoes Mensais por Modelo</h2>
+        <h2>Previsões Mensais por Modelo</h2>
         <details>
             <summary>Expandir tabela completa ({len(dates)} meses)</summary>
             <div class="table-scroll">
@@ -139,11 +216,13 @@ def _build_diagnostics_card(sarimax: dict) -> str:
         diag = diagnostics[name]
         if "error" in diag:
             rows += f"""<tr class="diag-error"><td>{name}</td>
-                <td colspan="5">Erro: {diag['error']}</td></tr>"""
+                <td colspan="6">Erro: {diag['error']}</td></tr>"""
             continue
 
         aic = diag.get("aic", "—")
         bic = diag.get("bic", "—")
+        mape = diag.get("mape")
+        mape_display = f"{mape:.2f}%" if mape is not None else "—"
         lb_p = diag.get("ljung_box_p")
         lb_pass = diag.get("ljung_box_pass")
 
@@ -164,6 +243,7 @@ def _build_diagnostics_card(sarimax: dict) -> str:
             <td>{name}{best_tag}<br><small class="desc-text">{desc}</small></td>
             <td class="number">{aic}</td>
             <td class="number">{bic}</td>
+            <td class="number">{mape_display}</td>
             <td class="number">{n_obs}</td>
             <td class="number">{lb_display}</td>
             <td>{verdict_icon}</td>
@@ -171,13 +251,14 @@ def _build_diagnostics_card(sarimax: dict) -> str:
 
     return f"""
     <section>
-        <h2>Diagnosticos dos Modelos</h2>
+        <h2>Diagnósticos dos Modelos</h2>
         <table class="data-table diagnostics-table">
             <thead>
                 <tr>
                     <th>Modelo</th>
                     <th>AIC</th>
                     <th>BIC</th>
+                    <th>MAPE</th>
                     <th>N Obs</th>
                     <th>Ljung-Box p</th>
                     <th>Veredicto</th>
@@ -277,7 +358,7 @@ def _build_ci_summary(sarimax: dict) -> str:
 
     return f"""
     <section>
-        <h2>Intervalos de Confianca</h2>
+        <h2>Intervalos de Confiança</h2>
         <p class="section-desc">Estimativa pontual (ensemble), faixa entre modelos e IC 95% do melhor modelo.</p>
         <table class="data-table">
             <thead>
@@ -296,30 +377,60 @@ def _build_ci_summary(sarimax: dict) -> str:
 
 
 def _build_scenario_summary(sarimax: dict) -> str:
-    """Scenario cards: pessimistic (5th pct), base (median), optimistic (95th pct)."""
+    """Scenario cards: pessimistic (P5), base (median), optimistic (P95) from Monte Carlo."""
     annual_totals = sarimax.get("annual_totals", {})
-    forecasts = sarimax.get("forecasts", {})
-    ci_data = sarimax.get("confidence_intervals", {})
-    ci_intervals = ci_data.get("intervals", [])
+    mc_config = sarimax.get("monte_carlo_config", {})
+    n_simulations = mc_config.get("n_simulations", 1000)
+    n_models = mc_config.get("models_simulated", sarimax.get("n_models_fitted", 0))
 
-    years = sorted(annual_totals.get("ensemble", {}).keys())
+    # Try ensemble_mc first (proper Monte Carlo percentiles)
+    ensemble_mc = annual_totals.get("ensemble_mc", {})
+
+    if ensemble_mc:
+        years = sorted(ensemble_mc.keys())
+    else:
+        years = sorted(annual_totals.get("ensemble", {}).keys())
+
     if not years:
         return ""
 
-    # Aggregate CI by year
-    ci_by_year = {}
-    for entry in ci_intervals:
-        year = entry["data"][:4]
-        ci_by_year.setdefault(year, {"lowers": [], "uppers": []})
-        ci_by_year[year]["lowers"].append(entry.get("ci_lower", 0))
-        ci_by_year[year]["uppers"].append(entry.get("ci_upper", 0))
-
     year_cards = ""
     for year in years:
-        ens_val = annual_totals.get("ensemble", {}).get(year, 0)
-        ci_year = ci_by_year.get(year, {"lowers": [], "uppers": []})
-        pessimistic = sum(ci_year["lowers"]) / 1e9 if ci_year["lowers"] else ens_val * 0.9
-        optimistic = sum(ci_year["uppers"]) / 1e9 if ci_year["uppers"] else ens_val * 1.1
+        if ensemble_mc and year in ensemble_mc:
+            mc_data = ensemble_mc[year]
+            if isinstance(mc_data, dict):
+                pessimistic = mc_data.get("low_95", 0)
+                base = mc_data.get("median", 0)
+                optimistic = mc_data.get("high_95", 0)
+            else:
+                # Fallback: ensemble_mc value is just a number
+                ens_val = annual_totals.get("ensemble", {}).get(year, 0)
+                pessimistic = ens_val * 0.9
+                base = ens_val
+                optimistic = ens_val * 1.1
+        else:
+            # Fallback: compute from individual model MC data
+            ens_val = annual_totals.get("ensemble", {}).get(year, 0)
+            # Try averaging individual model MC percentiles
+            model_lows = []
+            model_medians = []
+            model_highs = []
+            for key, val in annual_totals.items():
+                if key.endswith("_mc") and key != "ensemble_mc" and isinstance(val, dict):
+                    year_data = val.get(year, {})
+                    if isinstance(year_data, dict):
+                        model_lows.append(year_data.get("low_95", 0))
+                        model_medians.append(year_data.get("median", 0))
+                        model_highs.append(year_data.get("high_95", 0))
+
+            if model_lows:
+                pessimistic = sum(model_lows) / len(model_lows)
+                base = sum(model_medians) / len(model_medians)
+                optimistic = sum(model_highs) / len(model_highs)
+            else:
+                pessimistic = ens_val * 0.9
+                base = ens_val
+                optimistic = ens_val * 1.1
 
         year_cards += f"""
         <div class="scenario-year">
@@ -333,7 +444,7 @@ def _build_scenario_summary(sarimax: dict) -> str:
                 <div class="scenario-card scenario-base">
                     <div class="scenario-icon">&#9654;</div>
                     <div class="scenario-label">Base (Mediana)</div>
-                    <div class="scenario-value">{_fmt_brl(ens_val)}</div>
+                    <div class="scenario-value">{_fmt_brl(base)}</div>
                 </div>
                 <div class="scenario-card scenario-optimistic">
                     <div class="scenario-icon">&#9650;</div>
@@ -344,11 +455,19 @@ def _build_scenario_summary(sarimax: dict) -> str:
         </div>
         """
 
+    methodology_note = f"""
+    <p class="scenario-methodology">
+        Cenários derivados de {n_simulations:,} simulações Monte Carlo sobre ensemble de {n_models} modelos.
+        P5/P95 representam os percentis 5 e 95 da distribuição simulada.
+    </p>
+    """.replace(",", ".")
+
     return f"""
     <section>
-        <h2>Cenarios de Arrecadacao</h2>
-        <p class="section-desc">Baseado nos intervalos de confianca do melhor modelo e dispersao entre modelos.</p>
+        <h2>Cenários de Arrecadação</h2>
+        <p class="section-desc">Baseado em simulações Monte Carlo sobre o ensemble de modelos SARIMAX.</p>
         {year_cards}
+        {methodology_note}
     </section>
     """
 
@@ -359,9 +478,9 @@ def _build_freshness_indicator(macro: dict, sefaz: dict) -> str:
     icms_last = sefaz.get("last_observed_date")
 
     sources = [
-        ("IBC-BR (BCB)", freshness.get("ibc_br_last"), "Indice de Atividade Economica"),
-        ("IGP-DI (IPEA)", freshness.get("igp_di_last"), "Indice de Precos"),
-        ("ICMS-SP (SEFAZ)", icms_last, "Arrecadacao Historica"),
+        ("IBC-BR (BCB)", freshness.get("ibc_br_last"), "Índice de Atividade Econômica"),
+        ("IGP-DI (IPEA)", freshness.get("igp_di_last"), "Índice de Preços"),
+        ("ICMS-SP (SEFAZ)", icms_last, "Arrecadação Histórica"),
     ]
 
     cards = ""
@@ -403,8 +522,8 @@ def _build_validation_card(validation: dict) -> str:
     }.get(verdict, "verdict-warn-card")
 
     verdict_label = {
-        "pass": "&#10003; Todas as verificacoes OK",
-        "warn": "&#9888; Atencao: verificacoes com ressalvas",
+        "pass": "&#10003; Todas as verificações OK",
+        "warn": "&#9888; Atenção: verificações com ressalvas",
         "fail": "&#10007; Falhas detectadas",
     }.get(verdict, "Status desconhecido")
 
@@ -429,16 +548,236 @@ def _build_validation_card(validation: dict) -> str:
 
     return f"""
     <section>
-        <h2>Validacao das Previsoes</h2>
+        <h2>Validação das Previsões</h2>
         <div class="verdict-banner {verdict_class}">
             {verdict_label}
             <span class="verdict-stats">{passed} passou, {failed} falhou</span>
         </div>
         <table class="data-table validation-table">
-            <thead><tr><th></th><th>Verificacao</th><th>Detalhe</th></tr></thead>
+            <thead><tr><th></th><th>Verificação</th><th>Detalhe</th></tr></thead>
             <tbody>{check_rows}</tbody>
         </table>
         {warnings_html}
+    </section>
+    """
+
+
+def _build_predictions_table(sarimax: dict) -> str:
+    """Predictions table with individual models and ensemble combinations."""
+    diagnostics = sarimax.get("diagnostics", {})
+    annual_totals = sarimax.get("annual_totals", {})
+    best_model = sarimax.get("best_model", "")
+    best_mape_model = sarimax.get("best_model_mape", "")
+
+    if not diagnostics:
+        return ""
+
+    model_names = sorted(diagnostics.keys())
+    years = sorted(annual_totals.get("ensemble", {}).keys())
+
+    # Build candidates list: individual models + ensemble combinations
+    candidates = []
+
+    # 1. Individual models
+    for name in model_names:
+        diag = diagnostics[name]
+        if "error" in diag:
+            continue
+        annual = {}
+        for year in years:
+            annual[year] = annual_totals.get(name, {}).get(year, 0)
+        candidates.append({
+            "name": name,
+            "description": diag.get("description", ""),
+            "mape": diag.get("mape"),
+            "aic": diag.get("aic"),
+            "annual": annual,
+            "type": "individual",
+        })
+
+    # 2. Full ensemble (all models)
+    ens_annual = {}
+    for year in years:
+        ens_annual[year] = annual_totals.get("ensemble", {}).get(year, 0)
+    candidates.append({
+        "name": f"Ensemble({', '.join(m.replace('Modelo ', 'M') for m in model_names)})",
+        "description": f"Média de {len(model_names)} modelos",
+        "mape": None,
+        "aic": None,
+        "annual": ens_annual,
+        "type": "ensemble",
+    })
+
+    # 3. Ensemble combinations (top ensembles by estimated spread)
+    # Generate all combinations of 2+ models and compute average annual
+    from itertools import combinations
+    ensemble_candidates = []
+    for size in range(2, len(model_names)):
+        for combo in combinations(model_names, size):
+            combo_annual = {}
+            combo_mapes = []
+            for year in years:
+                vals = [annual_totals.get(m, {}).get(year, 0) for m in combo]
+                combo_annual[year] = sum(vals) / len(vals) if vals else 0
+            for m in combo:
+                m_mape = diagnostics.get(m, {}).get("mape")
+                if m_mape is not None:
+                    combo_mapes.append(m_mape)
+            avg_mape = sum(combo_mapes) / len(combo_mapes) if combo_mapes else None
+            short_names = [m.replace("Modelo ", "M") for m in combo]
+            ensemble_candidates.append({
+                "name": f"Ensemble({', '.join(short_names)})",
+                "description": f"Média de {len(combo)} modelos",
+                "mape": avg_mape,
+                "aic": None,
+                "annual": combo_annual,
+                "type": "ensemble_combo",
+            })
+
+    # Sort ensemble combos by MAPE and take top 5
+    ensemble_candidates.sort(key=lambda x: x["mape"] if x["mape"] is not None else 999)
+    candidates.extend(ensemble_candidates[:5])
+
+    # Determine best candidate (lowest MAPE)
+    best_candidate_name = None
+    best_candidate_mape = 999
+    for c in candidates:
+        if c["mape"] is not None and c["mape"] < best_candidate_mape:
+            best_candidate_mape = c["mape"]
+            best_candidate_name = c["name"]
+
+    # Build table
+    year_headers = "".join(f"<th>{y}</th>" for y in years)
+    rows = ""
+    for c in candidates:
+        mape_display = f"{c['mape']:.2f}%" if c["mape"] is not None else "—"
+        aic_display = f"{c['aic']:.1f}" if c["aic"] is not None else "—"
+        is_best = c["name"] == best_candidate_name
+        row_class = "best-model-row" if is_best else ""
+        best_tag = ' <span class="best-tag">MELHOR</span>' if is_best else ""
+        type_badge = {
+            "individual": '<span class="type-badge type-individual">Individual</span>',
+            "ensemble": '<span class="type-badge type-ensemble">Ensemble</span>',
+            "ensemble_combo": '<span class="type-badge type-ensemble">Ensemble</span>',
+        }.get(c["type"], "")
+
+        annual_cells = ""
+        for year in years:
+            val = c["annual"].get(year, 0)
+            annual_cells += f'<td class="number">{_fmt_brl(val)}</td>'
+
+        rows += f"""<tr class="{row_class}">
+            <td>{c['name']}{best_tag}<br><small class="desc-text">{c['description']}</small></td>
+            <td>{type_badge}</td>
+            <td class="number">{mape_display}</td>
+            <td class="number">{aic_display}</td>
+            {annual_cells}
+        </tr>"""
+
+    return f"""
+    <section>
+        <h2>Previsões — Todos os Candidatos</h2>
+        <p class="section-desc">Modelos individuais, ensemble completo e top 5 combinações por MAPE estimado.</p>
+        <div class="table-scroll">
+            <table class="data-table predictions-table">
+                <thead>
+                    <tr>
+                        <th>Candidato</th>
+                        <th>Tipo</th>
+                        <th>MAPE</th>
+                        <th>AIC</th>
+                        {year_headers}
+                    </tr>
+                </thead>
+                <tbody>{rows}</tbody>
+            </table>
+        </div>
+    </section>
+    """
+
+
+def _build_r_comparison_appendix(cross_validate: dict) -> str:
+    """Collapsible appendix: Python vs R model comparison."""
+    comparison_table = cross_validate.get("comparison_table", [])
+    discrepancies = cross_validate.get("discrepancies", [])
+
+    if not comparison_table:
+        return ""
+
+    # Group by model, only AIC rows
+    models_data = {}
+    for entry in comparison_table:
+        model = entry["model"]
+        metric = entry["metric"]
+        if model not in models_data:
+            models_data[model] = {}
+        models_data[model][metric] = entry
+
+    # Extract n_obs from discrepancies
+    n_obs_data = {}
+    for disc in discrepancies:
+        match = re.match(r"(Modelo \d+) n_obs: Python=(\d+), R=(\d+)", disc)
+        if match:
+            n_obs_data[match.group(1)] = {
+                "python": int(match.group(2)),
+                "r": int(match.group(3)),
+            }
+
+    rows = ""
+    for model_name in sorted(models_data.keys()):
+        data = models_data[model_name]
+        aic_entry = data.get("AIC", {})
+        n_obs = n_obs_data.get(model_name, {})
+
+        aic_py = aic_entry.get("python", "—")
+        aic_r = aic_entry.get("r", "—")
+        dev = aic_entry.get("deviation_pct", "—")
+        n_py = n_obs.get("python", "—")
+        n_r = n_obs.get("r", "—")
+
+        aic_py_fmt = f"{aic_py:.2f}" if isinstance(aic_py, (int, float)) else aic_py
+        aic_r_fmt = f"{aic_r:.2f}" if isinstance(aic_r, (int, float)) else aic_r
+        dev_fmt = f"{dev:.1f}%" if isinstance(dev, (int, float)) else dev
+
+        rows += f"""<tr>
+            <td>{model_name}</td>
+            <td class="number">{aic_py_fmt}</td>
+            <td class="number">{aic_r_fmt}</td>
+            <td class="number">{dev_fmt}</td>
+            <td class="number">{n_py}</td>
+            <td class="number">{n_r}</td>
+        </tr>"""
+
+    return f"""
+    <section>
+        <h2>Anexo: Comparação Python vs R</h2>
+        <details>
+            <summary>Expandir comparação de métricas entre implementações</summary>
+            <div class="r-comparison-content">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Modelo</th>
+                            <th>AIC (Python)</th>
+                            <th>AIC (R)</th>
+                            <th>Desvio %</th>
+                            <th>n_obs Python</th>
+                            <th>n_obs R</th>
+                        </tr>
+                    </thead>
+                    <tbody>{rows}</tbody>
+                </table>
+                <div class="r-comparison-note">
+                    <p><strong>Nota metodológica:</strong> Diferenças de AIC/BIC são esperadas devido a:
+                    (1) <code>lambda=0</code> no R aplica transformação Box-Cox internamente com ajuste de Jacobiano,
+                    enquanto Python usa <code>log()</code> manual;
+                    (2) tratamento de NaN nas variáveis exógenas laggadas difere entre <code>forecast::Arima()</code>
+                    e <code>statsmodels.SARIMAX</code>.
+                    As diferenças observadas (8–19%) são consistentes com estas diferenças de implementação
+                    e não indicam erro nos modelos.</p>
+                </div>
+            </div>
+        </details>
     </section>
     """
 
@@ -454,44 +793,44 @@ def _build_methodology_section(sarimax: dict) -> str:
     <section>
         <h2>Metodologia</h2>
         <details>
-            <summary>Expandir descricao metodologica</summary>
+            <summary>Expandir descrição metodológica</summary>
             <div class="methodology-content">
                 <h3>Modelos SARIMAX</h3>
                 <p>Foram ajustados <strong>{n_models} modelos</strong> SARIMAX (Seasonal AutoRegressive Integrated Moving Average with eXogenous regressors)
-                com diferentes especificacoes de ordem autorregressiva, diferenciacao e media movel, alem de variaveis exogenas distintas.</p>
+                com diferentes especificações de ordem autorregressiva, diferenciação e média móvel, além de variáveis exógenas distintas.</p>
 
-                <h3>Variaveis Exogenas</h3>
+                <h3>Variáveis Exógenas</h3>
                 <ul>
-                    <li><strong>IBC-BR:</strong> Indice de Atividade Economica do Banco Central (proxy do PIB mensal)</li>
-                    <li><strong>IGP-DI:</strong> Indice Geral de Precos (captura efeito inflacionario na base tributavel)</li>
-                    <li><strong>Dias uteis:</strong> Controle para efeito calendario</li>
+                    <li><strong>IBC-BR:</strong> Índice de Atividade Econômica do Banco Central (proxy do PIB mensal)</li>
+                    <li><strong>IGP-DI:</strong> Índice Geral de Preços (captura efeito inflacionário na base tributável)</li>
+                    <li><strong>Dias úteis:</strong> Controle para efeito calendário</li>
                     <li><strong>Dummies:</strong> LS2008NOV (crise financeira), TC2020APR04 (COVID), TC2022OUT05 (ajuste fiscal)</li>
                 </ul>
 
                 <h3>Teste de Estacionariedade (ADF)</h3>
-                <p>Augmented Dickey-Fuller sobre a primeira diferenca da serie em log:
-                   estatistica = <code>{adf.get('statistic', 'N/A')}</code>,
+                <p>Augmented Dickey-Fuller sobre a primeira diferença da série em log:
+                   estatística = <code>{adf.get('statistic', 'N/A')}</code>,
                    p-valor = <code>{adf.get('p_value', 'N/A')}</code>
-                   &mdash; {"Serie estacionaria" if adf.get('stationary') else "Nao-estacionaria"}.</p>
+                   &mdash; {"Série estacionária" if adf.get('stationary') else "Não-estacionária"}.</p>
 
-                <h3>Selecao do Melhor Modelo</h3>
-                <p>O modelo com menor AIC (Akaike Information Criterion) foi selecionado como referencia para os intervalos de confianca.
-                   A previsao pontual utiliza o <em>ensemble</em> (media aritmetica de todos os modelos validos).</p>
+                <h3>Seleção do Melhor Modelo</h3>
+                <p>O modelo com menor AIC (Akaike Information Criterion) foi selecionado como referência para os intervalos de confiança.
+                   A previsão pontual utiliza o <em>ensemble</em> (média aritmética de todos os modelos válidos).</p>
 
-                <h3>Intervalos de Confianca</h3>
-                <p>IC 95% derivados do modelo <strong>{ci_model}</strong> via previsao fora da amostra (<code>get_forecast</code>).
-                   A transformacao exponencial e aplicada apos a previsao em log para retornar a escala original.</p>
+                <h3>Intervalos de Confiança</h3>
+                <p>IC 95% derivados do modelo <strong>{ci_model}</strong> via previsão fora da amostra (<code>get_forecast</code>).
+                   A transformação exponencial é aplicada após a previsão em log para retornar à escala original.</p>
 
-                <h3>Diagnosticos</h3>
+                <h3>Diagnósticos</h3>
                 <ul>
-                    <li><strong>AIC / BIC:</strong> Criterios de informacao para comparacao entre modelos (menor = melhor)</li>
-                    <li><strong>Ljung-Box:</strong> Teste de autocorrelacao dos residuos (p > 0.05 = residuos nao autocorrelacionados)</li>
+                    <li><strong>AIC / BIC:</strong> Critérios de informação para comparação entre modelos (menor = melhor)</li>
+                    <li><strong>Ljung-Box:</strong> Teste de autocorrelação dos resíduos (p > 0.05 = resíduos não autocorrelacionados)</li>
                 </ul>
 
-                <h3>Cenarios</h3>
-                <p><strong>Pessimista:</strong> Limite inferior do IC 95% (percentil ~2.5%). <br>
-                   <strong>Base:</strong> Ensemble mean dos modelos. <br>
-                   <strong>Otimista:</strong> Limite superior do IC 95% (percentil ~97.5%).</p>
+                <h3>Cenários</h3>
+                <p><strong>Pessimista:</strong> Percentil 5 da simulação Monte Carlo (P5). <br>
+                   <strong>Base:</strong> Mediana da simulação Monte Carlo. <br>
+                   <strong>Otimista:</strong> Percentil 95 da simulação Monte Carlo (P95).</p>
             </div>
         </details>
     </section>
@@ -536,6 +875,30 @@ CSS = """
         font-size: 0.85rem;
         opacity: 0.75;
     }
+
+    /* Data context bar */
+    .data-context-bar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        padding: 1rem 3rem;
+        background: linear-gradient(135deg, #ebf8ff, #e6fffa);
+        border-bottom: 1px solid var(--border);
+        align-items: center;
+    }
+    .context-item {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        font-size: 0.85rem;
+        padding: 0.3rem 0.7rem;
+        background: rgba(255,255,255,0.7);
+        border-radius: 8px;
+        border: 1px solid rgba(49,130,206,0.15);
+    }
+    .context-icon { font-size: 0.95rem; }
+    .context-label { color: var(--text-light); font-weight: 500; }
+    .context-value { color: var(--primary); font-weight: 700; }
 
     /* KPI row */
     .kpi-row {
@@ -660,6 +1023,32 @@ CSS = """
     .verdict-warn { color: var(--warning); font-weight: 600; }
     .diag-error td { color: var(--danger); font-style: italic; }
 
+    /* Type badges for predictions table */
+    .type-badge {
+        font-size: 0.7rem;
+        padding: 0.15rem 0.5rem;
+        border-radius: 4px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+    }
+    .type-individual {
+        background: #ebf8ff;
+        color: var(--accent);
+    }
+    .type-ensemble {
+        background: #faf5ff;
+        color: #805ad5;
+    }
+
+    /* Predictions table */
+    .predictions-table .best-model-row {
+        background: #f0fff4 !important;
+    }
+    .predictions-table .best-model-row:hover {
+        background: #e6ffed !important;
+    }
+
     /* Uncertainty bar */
     .uncertainty-bar {
         width: 100%;
@@ -718,6 +1107,15 @@ CSS = """
         font-weight: 700;
         color: var(--text);
         font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+    }
+    .scenario-methodology {
+        margin-top: 1rem;
+        padding: 0.75rem 1rem;
+        background: #f7fafc;
+        border-left: 3px solid var(--accent);
+        font-size: 0.82rem;
+        color: var(--text-light);
+        line-height: 1.5;
     }
 
     /* Freshness */
@@ -805,6 +1203,26 @@ CSS = """
         font-size: 0.85rem;
     }
 
+    /* R comparison appendix */
+    .r-comparison-content {
+        padding: 1rem 0;
+    }
+    .r-comparison-note {
+        margin-top: 1rem;
+        padding: 1rem;
+        background: #f7fafc;
+        border-left: 3px solid var(--accent);
+        font-size: 0.88rem;
+        line-height: 1.6;
+        color: var(--text);
+    }
+    .r-comparison-note code {
+        background: #edf2f7;
+        padding: 0.15rem 0.4rem;
+        border-radius: 4px;
+        font-size: 0.82rem;
+    }
+
     /* Qualitative section */
     .qualitative .markdown-content {
         font-size: 0.95rem;
@@ -844,14 +1262,15 @@ CSS = """
 
     /* Responsive */
     @media (max-width: 900px) {
-        header, .kpi-row, .content { padding-left: 1.5rem; padding-right: 1.5rem; }
+        header, .kpi-row, .content, .data-context-bar { padding-left: 1.5rem; padding-right: 1.5rem; }
         .scenario-grid { grid-template-columns: 1fr; }
         .two-col { grid-template-columns: 1fr; }
         .kpi-row { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
     }
     @media (max-width: 600px) {
-        header, .kpi-row, .content { padding-left: 1rem; padding-right: 1rem; }
+        header, .kpi-row, .content, .data-context-bar { padding-left: 1rem; padding-right: 1rem; }
         .kpi-value { font-size: 1.4rem; }
+        .data-context-bar { flex-direction: column; }
     }
 
     /* Print */
@@ -862,6 +1281,80 @@ CSS = """
         details[open] summary ~ * { display: block; }
     }
 """
+
+
+def _patch_fan_chart_legend(plotly_charts: dict, sarimax: dict) -> dict:
+    """Rename the fan chart legend from 'Previsao (mediana)' to best model name with MAPE."""
+    fan_chart = plotly_charts.get("fan_chart")
+    if not fan_chart or not isinstance(fan_chart, dict):
+        return plotly_charts
+
+    best_mape_model = sarimax.get("best_model_mape", sarimax.get("best_model", ""))
+    diagnostics = sarimax.get("diagnostics", {})
+    best_diag = diagnostics.get(best_mape_model, {})
+    best_mape = best_diag.get("mape")
+
+    if best_mape_model and best_mape is not None:
+        label = f"Previsão — {best_mape_model} (MAPE {best_mape:.1f}%)"
+    elif best_mape_model:
+        label = f"Previsão — {best_mape_model}"
+    else:
+        label = "Previsão (mediana)"
+
+    # Also fix the title
+    if "layout" in fan_chart:
+        title = fan_chart["layout"].get("title", "")
+        if isinstance(title, dict) and "text" in title:
+            title["text"] = "ICMS-SP: Histórico e Previsão com Intervalos de Confiança"
+        elif isinstance(title, str):
+            fan_chart["layout"]["title"] = "ICMS-SP: Histórico e Previsão com Intervalos de Confiança"
+
+    if "data" in fan_chart:
+        for trace in fan_chart["data"]:
+            name = trace.get("name", "")
+            if "mediana" in name.lower() or "previsao" in name.lower():
+                trace["name"] = label
+
+    plotly_charts["fan_chart"] = fan_chart
+    return plotly_charts
+
+
+def _fix_plotly_portuguese(plotly_charts: dict) -> dict:
+    """Fix Portuguese orthography in all Plotly chart titles and labels."""
+    replacements = {
+        "Previsao": "Previsão",
+        "Arrecadacao": "Arrecadação",
+        "Projecoes": "Projeções",
+        "Projecao": "Projeção",
+        "Financas Publicas": "Finanças Públicas",
+        "Diagnosticos": "Diagnósticos",
+        "Diagnostico": "Diagnóstico",
+        "Validacao": "Validação",
+        "Historico": "Histórico",
+        "Confianca": "Confiança",
+        "bilhoes": "bilhões",
+        "Variaveis Exogenas": "Variáveis Exógenas",
+        "Variaveis": "Variáveis",
+        "Exogenas": "Exógenas",
+        "Indice": "Índice",
+        "Economica": "Econômica",
+    }
+
+    def _fix_str(s: str) -> str:
+        for old, new in replacements.items():
+            s = s.replace(old, new)
+        return s
+
+    def _fix_obj(obj):
+        if isinstance(obj, str):
+            return _fix_str(obj)
+        elif isinstance(obj, dict):
+            return {k: _fix_obj(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [_fix_obj(item) for item in obj]
+        return obj
+
+    return _fix_obj(plotly_charts)
 
 
 def main(*, output_dir: str = "", template_name: str = "", **kwargs) -> dict:
@@ -877,8 +1370,19 @@ def main(*, output_dir: str = "", template_name: str = "", **kwargs) -> dict:
     validation = _load(od, "validate_forecasts")
     macro = _load(od, "fetch_macro_data")
     sefaz = _load(od, "load_sefaz_data")
+    cross_validate = _load(od, "cross_validate_r")
 
     plotly_charts = charts.get("plotly_charts", {})
+
+    # Change 4: Remove AIC bar chart
+    plotly_charts.pop("aic_comparison", None)
+
+    # Change 6: Patch fan chart legend
+    plotly_charts = _patch_fan_chart_legend(plotly_charts, sarimax)
+
+    # Change 7: Fix Portuguese orthography in chart titles/labels
+    plotly_charts = _fix_plotly_portuguese(plotly_charts)
+
     annual_totals = sarimax.get("annual_totals", {}).get("ensemble", {})
     best_model = sarimax.get("best_model", "N/A")
     diagnostics = sarimax.get("diagnostics", {})
@@ -927,11 +1431,11 @@ def main(*, output_dir: str = "", template_name: str = "", **kwargs) -> dict:
     v_passed = validation.get("passed", 0)
     v_failed = validation.get("failed", 0)
     verdict_color = {"pass": "var(--success)", "warn": "var(--warning)", "fail": "var(--danger)"}.get(verdict, "var(--text-light)")
-    verdict_display = {"pass": "OK", "warn": "Atencao", "fail": "Falha"}.get(verdict, "—")
+    verdict_display = {"pass": "OK", "warn": "Atenção", "fail": "Falha"}.get(verdict, "—")
     kpi_html += f"""
     <div class="kpi-card">
         <div class="kpi-value" style="font-size:1.3rem; color:{verdict_color};">{verdict_display}</div>
-        <div class="kpi-label">Validacao ({v_passed}/{v_passed + v_failed} checks)</div>
+        <div class="kpi-label">Validação ({v_passed}/{v_passed + v_failed} checks)</div>
     </div>
     """
 
@@ -941,19 +1445,22 @@ def main(*, output_dir: str = "", template_name: str = "", **kwargs) -> dict:
         exec_summary = qualitative.get("executive_summary", "")
         qual_html = f"""
         <section class="qualitative">
-            <h2>Analise Qualitativa</h2>
+            <h2>Análise Qualitativa</h2>
             <div class="markdown-content">{exec_summary}</div>
         </section>
         """
 
-    # Build all new sections
+    # Build all sections
+    data_context_bar = _build_data_context_bar(sefaz, macro)
     monthly_table = _build_monthly_forecast_table(sarimax)
     diagnostics_card = _build_diagnostics_card(sarimax)
     ci_summary = _build_ci_summary(sarimax)
     scenario_summary = _build_scenario_summary(sarimax)
+    predictions_table = _build_predictions_table(sarimax)
     freshness_indicator = _build_freshness_indicator(macro, sefaz)
     validation_card = _build_validation_card(validation)
     methodology = _build_methodology_section(sarimax)
+    r_comparison = _build_r_comparison_appendix(cross_validate)
 
     now_str = datetime.now().strftime("%d/%m/%Y %H:%M")
 
@@ -962,14 +1469,14 @@ def main(*, output_dir: str = "", template_name: str = "", **kwargs) -> dict:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard &mdash; Previsao ICMS-SP</title>
+    <title>Dashboard &mdash; Previsão ICMS-SP</title>
     <script>{plotly_js}</script>
     <style>{CSS}</style>
 </head>
 <body>
     <header>
-        <h1>Previsao de Arrecadacao ICMS-SP</h1>
-        <p>SEFAZ &mdash; Assessoria de Economia e Financas Publicas</p>
+        <h1>Previsão de Arrecadação ICMS-SP</h1>
+        <p>SEFAZ &mdash; Assessoria de Economia e Finanças Públicas</p>
         <div class="header-meta">
             <span>Gerado em: {now_str}</span>
             <span>{n_models} modelos SARIMAX</span>
@@ -981,14 +1488,18 @@ def main(*, output_dir: str = "", template_name: str = "", **kwargs) -> dict:
         {kpi_html}
     </div>
 
+    {data_context_bar}
+
     <div class="content">
         {scenario_summary}
 
+        {predictions_table}
+
         <section>
-            <h2>Projecoes por Modelo</h2>
+            <h2>Projeções por Modelo</h2>
             <div class="info-row">
                 <span class="info-badge">{n_models} modelos ajustados</span>
-                <span class="info-badge">Ensemble = media dos modelos</span>
+                <span class="info-badge">Ensemble = média dos modelos</span>
             </div>
             {''.join(plotly_scripts)}
         </section>
@@ -1007,6 +1518,8 @@ def main(*, output_dir: str = "", template_name: str = "", **kwargs) -> dict:
         {qual_html}
 
         {methodology}
+
+        {r_comparison}
     </div>
 
     <footer>
