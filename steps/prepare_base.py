@@ -77,19 +77,44 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
             for lag in range(1, 5):
                 df[f"{col}_lag{lag}"] = df[col].shift(lag)
 
-    # Forward projection for IBC-BR using Focus/PIB
+    # Forward projection for IBC-BR using Focus/PIB + seasonal profile
     focus = macro.get("focus_expectations", {})
     pib_growth = float(pib_override) / 100 if pib_override else (focus.get("PIB Total", 2.5) / 100)
 
-    last_ibc = df.loc[df["ibc_br"].notna(), "ibc_br"].iloc[-1] if df["ibc_br"].notna().any() else 150.0
     last_ibc_date = df.loc[df["ibc_br"].notna(), "data"].iloc[-1]
-    monthly_growth = (1 + pib_growth) ** (1/12) - 1
 
+    # Build seasonal profile from last 5 complete years of observed IBC-BR
+    last_obs_year = last_ibc_date.year
+    seasonal_years = range(last_obs_year - 5, last_obs_year)
+    seasonal_factors = np.ones(12)
+    year_profiles = []
+    for yr in seasonal_years:
+        yr_data = df[(df["ano"] == yr) & df["ibc_br"].notna()]
+        if len(yr_data) == 12:
+            yr_mean = yr_data["ibc_br"].mean()
+            if yr_mean > 0:
+                year_profiles.append(yr_data["ibc_br"].values / yr_mean)
+    if year_profiles:
+        seasonal_factors = np.mean(year_profiles, axis=0)
+
+    # Calibrate projection level: target annual mean = last_full_year_mean × (1 + growth)
+    # Use last full year of observed data as base level
+    last_full_year = df[(df["ano"] == last_obs_year - 1) & df["ibc_br"].notna()]
+    if len(last_full_year) == 12:
+        base_annual_mean = last_full_year["ibc_br"].mean()
+    else:
+        base_annual_mean = df.loc[df["ibc_br"].notna(), "ibc_br"].tail(12).mean()
+
+    # Project each future month: trend × seasonal factor
     future_mask = (df["data"] > last_ibc_date) & df["ibc_br"].isna()
-    for i, idx in enumerate(df[future_mask].index):
-        df.loc[idx, "ibc_br"] = last_ibc * ((1 + monthly_growth) ** (i + 1))
+    for idx in df[future_mask].index:
+        row = df.loc[idx]
+        years_ahead = row["ano"] - (last_obs_year - 1)
+        target_annual_mean = base_annual_mean * ((1 + pib_growth) ** years_ahead)
+        month_idx = int(row["mes"]) - 1
+        df.loc[idx, "ibc_br"] = target_annual_mean * seasonal_factors[month_idx]
 
-    # Forward projection for IGP-DI
+    # Forward projection for IGP-DI (geometric growth — no strong seasonality)
     igpm_growth = float(inflation_override) / 100 if inflation_override else (focus.get("IGP-M", 5.0) / 100)
 
     last_igp = df.loc[df["igp_di"].notna(), "igp_di"].iloc[-1] if df["igp_di"].notna().any() else 100.0
@@ -98,7 +123,7 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
 
     future_mask_igp = (df["data"] > last_igp_date) & df["igp_di"].isna()
     for i, idx in enumerate(df[future_mask_igp].index):
-        df.loc[idx, "igp_di"] = last_igp * ((1 + monthly_igp) ** i)
+        df.loc[idx, "igp_di"] = last_igp * ((1 + monthly_igp) ** (i + 1))
 
     # Recalculate lags after projection fill
     for col in ["ibc_br", "igp_di"]:
