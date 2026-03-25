@@ -246,10 +246,10 @@ def _generate_plotly_charts(sarimax_results: dict, base_data: list) -> dict:
         # Vertical separator
         if not hist_df.empty and "icms_sp" in hist_df.columns:
             last_hist = hist_df.loc[hist_df["icms_sp"].notna(), "data"].max()
-            fig_fan.add_vline(
-                x=last_hist.isoformat() if hasattr(last_hist, "isoformat") else str(last_hist),
-                line_dash="dot", line_color="#7F8C8D", opacity=0.7,
-                annotation_text="Inicio previsao",
+            vline_x = str(last_hist)[:10]
+            fig_fan.add_shape(type="line",
+                x0=vline_x, x1=vline_x, y0=0, y1=1, yref="paper",
+                line=dict(dash="dot", color="#7F8C8D", width=1),
             )
 
         fig_fan.update_layout(
