@@ -90,13 +90,39 @@ def _build_data_context_bar(sefaz: dict, macro: dict) -> str:
     ibc_label = _date_to_month_label(freshness.get("ibc_br_last", "")) if freshness.get("ibc_br_last") else "—"
     igp_label = _date_to_month_label(freshness.get("igp_di_last", "")) if freshness.get("igp_di_last") else "—"
 
-    pib = focus.get("PIB Total")
-    igpm = focus.get("IGP-M")
-    focus_text = ""
-    if pib is not None and igpm is not None:
-        focus_text = f"PIB +{pib:.2f}%, IGP-M +{igpm:.2f}%"
-    elif pib is not None:
-        focus_text = f"PIB +{pib:.2f}%"
+    # Focus with survey date and per-year expectations
+    focus_by_year = macro.get("focus_by_year", {})
+    focus_survey_date = freshness.get("focus_survey_date", "")
+
+    focus_parts = []
+    for yr in sorted(focus_by_year.keys()):
+        yr_data = focus_by_year[yr]
+        pib_yr = yr_data.get("PIB Total")
+        igpm_yr = yr_data.get("IGP-M")
+        parts = []
+        if pib_yr is not None:
+            parts.append(f"PIB {yr}: +{pib_yr:.1f}%")
+        if igpm_yr is not None:
+            parts.append(f"IGP-M {yr}: +{igpm_yr:.1f}%")
+        if parts:
+            focus_parts.append(", ".join(parts))
+
+    if not focus_parts:
+        pib = focus.get("PIB Total")
+        igpm = focus.get("IGP-M")
+        if pib is not None:
+            focus_parts.append(f"PIB +{pib:.1f}%")
+        if igpm is not None:
+            focus_parts.append(f"IGP-M +{igpm:.1f}%")
+
+    focus_text = " | ".join(focus_parts)
+    survey_label = ""
+    if focus_survey_date:
+        try:
+            sd = datetime.strptime(focus_survey_date[:10], "%Y-%m-%d")
+            survey_label = sd.strftime("%d/%m/%Y")
+        except Exception:
+            survey_label = focus_survey_date[:10]
 
     items = [
         ("📊", "Último ICMS observado", last_obs_label),
@@ -105,7 +131,8 @@ def _build_data_context_bar(sefaz: dict, macro: dict) -> str:
         ("💹", "IGP-DI até", igp_label),
     ]
     if focus_text:
-        items.append(("🎯", "Focus", focus_text))
+        focus_label = f"Focus (coleta {survey_label})" if survey_label else "Focus"
+        items.append(("🎯", focus_label, focus_text))
 
     badges = ""
     for icon, label, value in items:
