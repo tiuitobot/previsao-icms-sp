@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "step_definition.schema.json",
+  "title": "Canonical Step Definition",
+  "description": "Defines a reusable pipeline step — its interface, contracts, cost, and executor compatibility. Steps are canonical objects; DAGs are compositions of steps.",
+  "type": "object",
+  "required": ["id"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "pattern": "^_?[a-z][a-z0-9_]*$" },
+    "extends": { "type": "string", "description": "Parent step ID for inheritance." },
+    "name": { "type": "string" },
+    "description": { "type": "string" },
+    "type": { "enum": ["llm", "deterministic", "hybrid"] },
+    "replaces": { "type": "array", "items": { "type": "string" } },
+    "script": { "type": "string", "description": "Python script path (for deterministic/hybrid)." },
+    "function": { "type": "string", "description": "Entry function name (default: main)." },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "required": { "type": "array", "items": { "type": "string" } },
+        "optional": { "type": "array", "items": { "type": "string" } },
+        "expects_keys": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Top-level JSON keys this step reads from upstream outputs. Used by validate_data_flow gate to verify producer→consumer field compatibility."
+        }
+      }
+    },
+    "outputs": {
+      "type": "object",
+      "required": ["primary"],
+      "additionalProperties": false,
+      "properties": {
+        "primary": { "type": "string" },
+        "secondary": { "type": "array", "items": { "type": "string" } },
+        "schema": { "type": "string", "description": "JSON Schema path for output validation." },
+        "keys": { "type": "array", "items": { "type": "string" }, "description": "Top-level JSON keys this step produces. Downstream steps consume ONLY these keys." }
+      }
+    },
+    "contracts": {
+      "type": "object",
+      "description": "Model-keyed map of contract .md paths.",
+      "additionalProperties": { "type": "string" }
+    },
+    "compatible_executors": {
+      "type": "array",
+      "items": { "enum": ["python", "openai_api", "azure_openai", "codex_cli", "anthropic_api", "claude_cli", "kimi_api"] }
+    },
+    "compatible_models": { "type": "array", "items": { "type": "string" } },
+    "cost_estimate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fixed_usd": { "type": "number" },
+        "per_chunk_usd": { "type": "number" },
+        "notes": { "type": "string" }
+      }
+    },
+    "map_eligible": { "type": "boolean", "default": false },
+    "non_blocking": { "type": "boolean", "default": false },
+    "tags": { "type": "array", "items": { "type": "string" } },
+    "known_limitations": { "type": "array", "items": { "type": "string" } },
+    "suggested_fixups": { "type": "array", "items": { "type": "string" } },
+    "abstract": {
+      "type": "boolean",
+      "default": false,
+      "description": "If true, this step is a super-class and cannot be used directly in a DAG."
+    },
+    "library": {
+      "type": "object",
+      "description": "Worker library metadata for discovery, reuse, and LLM-assisted pipeline design.",
+      "additionalProperties": false,
+      "properties": {
+        "category": { "enum": ["abstract", "concrete", "utility"] },
+        "origin": { "type": "string", "description": "Source repository this worker was extracted from." },
+        "origin_version": { "type": "string", "description": "Version/tag in the origin repo." },
+        "proven_in_production": { "type": "boolean", "default": false },
+        "domain": { "type": "string", "description": "Primary domain from config/domains.json registry." },
+        "subdomain": { "type": "string", "description": "Subdomain under the primary domain." },
+        "also_relevant": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[a-z]+\\.[a-z-]+$" },
+          "description": "Cross-domain references in 'domain.subdomain' format."
+        },
+        "domains": { "type": "array", "items": { "type": "string" }, "deprecated": true, "description": "DEPRECATED: use domain/subdomain instead." },
+        "use_cases": { "type": "array", "items": { "type": "string" } },
+        "typical_cost_usd": { "type": "number", "description": "Typical cost per invocation in USD." },
+        "typical_duration_s": { "type": "number", "description": "Typical wall-clock duration in seconds." },
+        "quality_notes": { "type": "string" },
+        "suggested_fixups": { "type": "array", "items": { "type": "string" } },
+        "complementary_workers": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

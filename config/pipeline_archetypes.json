@@ -1,0 +1,264 @@
+{
+  "schema_version": 3,
+  "archetypes": {
+    "generic-deliverable": {
+      "description": "Pipeline enxuto para entregaveis estruturados em qualquer dominio.",
+      "default_r10_plugin": "lib.r10_plugins.passthrough.PassthroughPlugin",
+      "default_executor": "openai_api",
+      "default_model": "gpt-4.1",
+      "steps": [
+        {
+          "number": 0,
+          "id": "data_ingester",
+          "name": "Data Ingester",
+          "type": "deterministic",
+          "executor": "python",
+          "depends_on": [],
+          "checkpoint": false,
+          "task": "Load and normalize input data from files, APIs, or databases. Output structured JSON for downstream steps.",
+          "acceptance": "All declared data sources loaded. Output is valid JSON with expected schema.",
+          "output_file": "ingested_data.json",
+          "_implantador_note": "REPLACE THIS with a real ingestion script for the user's data sources. This is a placeholder."
+        },
+        {
+          "number": 1,
+          "id": "context_analyzer",
+          "name": "Context Analyzer",
+          "type": "llm",
+          "executor": "openai_api",
+          "model": "gpt-4.1",
+          "depends_on": ["data_ingester"],
+          "checkpoint": false,
+          "task": "Evaluate context, constraints, and execution risks for the deliverable. Recommend proceed or pause.",
+          "acceptance": "Recommendation is explicit, justified, and actionable for downstream agents.",
+          "output_file": "context_analysis.json"
+        },
+        {
+          "number": 2,
+          "id": "insight_writer",
+          "name": "Insight Writer",
+          "type": "llm",
+          "executor": "openai_api",
+          "model": "gpt-4.1",
+          "depends_on": ["data_ingester", "context_analyzer"],
+          "checkpoint": false,
+          "task": "Produce ranked insights and structure recommendations based on ingested data.",
+          "acceptance": "Every insight references specific data from the ingested source.",
+          "output_file": "insights.json"
+        },
+        {
+          "number": 3,
+          "id": "draft_writer",
+          "name": "Draft Writer",
+          "type": "llm",
+          "executor": "openai_api",
+          "model": "gpt-4.1",
+          "depends_on": ["data_ingester", "insight_writer"],
+          "checkpoint": true,
+          "task": "Draft the main deliverable, preserving factual accuracy and progressive structure.",
+          "acceptance": "Draft matches the brief, uses only grounded claims, and is complete enough for review.",
+          "output_file": "draft.json"
+        },
+        {
+          "number": 4,
+          "id": "output_validator",
+          "name": "Output Validator",
+          "type": "deterministic",
+          "executor": "python",
+          "depends_on": ["draft_writer", "data_ingester"],
+          "checkpoint": false,
+          "task": "Cross-check draft output against source data. Verify numbers, dates, and references match the ingested data.",
+          "acceptance": "Zero mismatches between draft claims and source data. Discrepancies logged.",
+          "output_file": "validation_report.json",
+          "_implantador_note": "CUSTOMIZE: add domain-specific validation rules (e.g., check financial totals, verify legal citations)."
+        },
+        {
+          "number": 5,
+          "id": "report_synthesizer",
+          "name": "Report Synthesizer",
+          "type": "llm",
+          "executor": "openai_api",
+          "model": "gpt-4.1",
+          "depends_on": ["draft_writer", "output_validator"],
+          "checkpoint": false,
+          "task": "Compile final report incorporating validation feedback. Structure for the chosen template.",
+          "acceptance": "Report is complete, all validation issues resolved, ready for rendering.",
+          "output_file": "final_report.json"
+        },
+        {
+          "number": 6,
+          "id": "html_renderer",
+          "name": "HTML Renderer",
+          "type": "deterministic",
+          "executor": "python",
+          "depends_on": ["report_synthesizer"],
+          "checkpoint": false,
+          "task": "Render final report to HTML using Jinja2 template.",
+          "acceptance": "HTML file generated in report/ directory.",
+          "output_file": "html_renderer.json"
+        },
+        {
+          "number": 7,
+          "id": "html_quality_checker",
+          "name": "HTML Quality Checker",
+          "type": "deterministic",
+          "executor": "python",
+          "depends_on": ["html_renderer"],
+          "checkpoint": false,
+          "task": "Validate HTML output: no markdown artifacts, correct lang attribute, no mixed languages, professional appearance.",
+          "acceptance": "HTML passes all quality checks. No raw **bold** or _italic_, lang matches pipeline language, no English terms in Portuguese report.",
+          "output_file": "quality_report.json"
+        }
+      ]
+    },
+    "analysis-report": {
+      "description": "Pipeline completo para relatorios analiticos com narrativa executiva e auditoria.",
+      "default_r10_plugin": "lib.r10_plugins.passthrough.PassthroughPlugin",
+      "default_executor": "openai_api",
+      "default_model": "gpt-4.1",
+      "steps": [
+        {
+          "number": 0, "id": "data_ingester", "name": "Data Ingester",
+          "type": "deterministic", "executor": "python", "depends_on": [],
+          "task": "Load and normalize input data from all declared sources.",
+          "acceptance": "All data loaded and validated.", "output_file": "ingested_data.json",
+          "_implantador_note": "REPLACE with real ingestion scripts for each data source."
+        },
+        {
+          "number": 1, "id": "domain_specialist", "name": "Domain Specialist",
+          "type": "llm", "executor": "openai_api", "depends_on": ["data_ingester"],
+          "task": "Evaluate context and propose execution strategy based on ingested data.",
+          "acceptance": "Recommendation is explicit and justified.", "output_file": "research_proposals.json"
+        },
+        {
+          "number": 2, "id": "data_auditor", "name": "Data Auditor",
+          "type": "llm", "executor": "openai_api", "depends_on": ["data_ingester", "domain_specialist"],
+          "task": "Build factsheet from source data with traceable keys.",
+          "acceptance": "All numeric claims map to source fields.", "output_file": "factsheet.json"
+        },
+        {
+          "number": 3, "id": "insight_explorer", "name": "Insight Explorer",
+          "type": "llm", "executor": "openai_api", "depends_on": ["data_auditor"],
+          "task": "Identify ranked insights and implications.",
+          "acceptance": "Each insight cites evidence from the factsheet.", "output_file": "insights.json"
+        },
+        {
+          "number": 4, "id": "executive_writer", "name": "Executive Writer",
+          "type": "llm", "executor": "openai_api", "depends_on": ["data_auditor", "insight_explorer"],
+          "task": "Draft the executive narrative with implications.",
+          "acceptance": "Tone and scope align with the brief.", "output_file": "executive_draft.json"
+        },
+        {
+          "number": 5, "id": "technical_writer", "name": "Technical Writer",
+          "type": "llm", "executor": "openai_api", "depends_on": ["data_auditor", "insight_explorer", "executive_writer"],
+          "task": "Write detailed technical sections with references.",
+          "acceptance": "No contradiction with the executive draft.", "output_file": "technical_sections.json"
+        },
+        {
+          "number": 6, "id": "output_validator", "name": "Output Validator",
+          "type": "deterministic", "executor": "python",
+          "depends_on": ["data_ingester", "executive_writer", "technical_writer"],
+          "task": "Cross-check all LLM outputs against source data. Flag numeric mismatches and unsupported claims.",
+          "acceptance": "Zero critical discrepancies.", "output_file": "validation_report.json"
+        },
+        {
+          "number": 7, "id": "report_synthesizer", "name": "Report Synthesizer",
+          "type": "llm", "executor": "openai_api",
+          "depends_on": ["executive_writer", "technical_writer", "output_validator"],
+          "checkpoint": true,
+          "task": "Compile final report, resolve validation issues, structure for template.",
+          "acceptance": "Complete report, all validation issues addressed.", "output_file": "final_report.json"
+        },
+        {
+          "number": 8, "id": "html_renderer", "name": "HTML Renderer",
+          "type": "deterministic", "executor": "python",
+          "depends_on": ["report_synthesizer"],
+          "task": "Render final report to HTML using Jinja2 template.",
+          "acceptance": "HTML file generated in report/ directory.", "output_file": "html_renderer.json"
+        },
+        {
+          "number": 9, "id": "html_quality_checker", "name": "HTML Quality Checker",
+          "type": "deterministic", "executor": "python",
+          "depends_on": ["html_renderer"],
+          "task": "Validate HTML: no markdown artifacts, correct lang, no mixed languages, professional appearance.",
+          "acceptance": "HTML passes all quality checks.", "output_file": "quality_report.json"
+        },
+        {
+          "number": 10, "id": "external_auditor", "name": "External Auditor",
+          "type": "llm", "executor": "openai_api", "depends_on": ["report_synthesizer"],
+          "non_blocking": true,
+          "task": "Independent cold audit of the final deliverable. Score accuracy, completeness, consistency.",
+          "acceptance": "Audit includes score 1-10, issues by severity.", "output_file": "external_audit.json"
+        }
+      ]
+    },
+    "teaching-materials": {
+      "description": "Pipeline pedagogico para materiais didaticos com exercicios e revisao.",
+      "default_r10_plugin": "lib.r10_plugins.passthrough.PassthroughPlugin",
+      "default_executor": "openai_api",
+      "default_model": "gpt-4.1",
+      "steps": [
+        {
+          "number": 0, "id": "data_ingester", "name": "Data Ingester",
+          "type": "deterministic", "executor": "python", "depends_on": [],
+          "task": "Load curriculum data, reference materials, and learner profiles.",
+          "acceptance": "All input data loaded and structured.", "output_file": "ingested_data.json",
+          "_implantador_note": "REPLACE with real data loading (curriculum PDFs, syllabus files, etc.)."
+        },
+        {
+          "number": 1, "id": "curriculum_analyzer", "name": "Curriculum Analyzer",
+          "type": "llm", "executor": "openai_api", "depends_on": ["data_ingester"],
+          "task": "Analyze curriculum context, learner profile, and pedagogical constraints.",
+          "acceptance": "Pedagogical constraints and scope are explicit.", "output_file": "curriculum_analysis.json"
+        },
+        {
+          "number": 2, "id": "lesson_planner", "name": "Lesson Planner",
+          "type": "llm", "executor": "openai_api", "depends_on": ["curriculum_analyzer"],
+          "task": "Plan the lesson sequence, pacing, and learning objectives.",
+          "acceptance": "Plan covers objectives, pacing, and assessment checkpoints.", "output_file": "lesson_plan.json"
+        },
+        {
+          "number": 3, "id": "slide_writer", "name": "Slide Writer",
+          "type": "llm", "executor": "openai_api", "depends_on": ["lesson_planner"],
+          "task": "Write slide content with clear progression, examples, and prompts.",
+          "acceptance": "Slides follow the lesson plan and are classroom-ready.", "output_file": "slides.json"
+        },
+        {
+          "number": 4, "id": "exercise_creator", "name": "Exercise Creator",
+          "type": "llm", "executor": "openai_api", "depends_on": ["lesson_planner", "slide_writer"],
+          "task": "Create exercises, answer keys, and formative checks.",
+          "acceptance": "Exercises cover the objectives and include answer guidance.", "output_file": "exercises.json"
+        },
+        {
+          "number": 5, "id": "output_validator", "name": "Output Validator",
+          "type": "deterministic", "executor": "python",
+          "depends_on": ["data_ingester", "slide_writer", "exercise_creator"],
+          "task": "Validate pedagogical alignment: exercises match objectives, slides cover all topics.",
+          "acceptance": "Zero coverage gaps between objectives and materials.", "output_file": "validation_report.json"
+        },
+        {
+          "number": 6, "id": "pedagogical_reviewer", "name": "Pedagogical Reviewer",
+          "type": "llm", "executor": "openai_api",
+          "depends_on": ["lesson_planner", "slide_writer", "exercise_creator", "output_validator"],
+          "checkpoint": true,
+          "task": "Review pedagogical coherence, accessibility, and workload balance.",
+          "acceptance": "Review identifies pacing or clarity issues with actionable corrections.", "output_file": "pedagogical_review.json"
+        },
+        {
+          "number": 7, "id": "materials_assembler", "name": "Materials Assembler",
+          "type": "deterministic", "executor": "python",
+          "depends_on": ["slide_writer", "exercise_creator", "pedagogical_reviewer"],
+          "task": "Assemble the final teaching pack with slides, exercises, and corrections.",
+          "acceptance": "Teaching pack is complete and all critical review items are resolved.", "output_file": "teaching_pack.json"
+        },
+        {
+          "number": 8, "id": "html_quality_checker", "name": "HTML Quality Checker",
+          "type": "deterministic", "executor": "python",
+          "depends_on": ["materials_assembler"],
+          "task": "Validate HTML: no markdown artifacts, correct lang, no mixed languages, professional appearance.",
+          "acceptance": "HTML passes all quality checks.", "output_file": "quality_report.json"
+        }
+      ]
+    }
+  }
+}

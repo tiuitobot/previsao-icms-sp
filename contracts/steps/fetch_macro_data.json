@@ -1,0 +1,24 @@
+{
+  "id": "fetch_macro_data",
+  "name": "Fetch Macro Data",
+  "description": "Fetches IBC-BR from BCB SGS, IGP-DI from IPEA, and Focus market expectations from BCB Olinda API.",
+  "type": "deterministic",
+  "extends": "_base_ingester",
+  "script": "steps/fetch_macro_data.py",
+  "function": "main",
+  "inputs": {"required": ["api_endpoints"], "optional": ["cache_dir"]},
+  "outputs": {
+    "primary": "macro_data.json",
+    "keys": ["ibc_br", "igp_di", "focus_expectations", "data_freshness", "status"]
+  },
+  "compatible_executors": ["python"],
+  "cost_estimate": {"fixed_usd": 0, "notes": "Free public APIs"},
+  "tags": ["ingestion", "api", "bcb", "ipea", "macro"],
+  "library": {
+    "category": "concrete",
+    "origin": "previsao-icms-sp",
+    "domain": "financeiro",
+    "subdomain": "macro",
+    "proven_in_production": true
+  }
+}

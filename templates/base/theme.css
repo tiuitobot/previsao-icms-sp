@@ -1,0 +1,151 @@
+/* theme.css -- Design tokens for pipeline-engine report templates.
+   Extracted from analise-autos and revisao-tecnica production visual systems.
+   All values expressed as CSS custom properties for easy theming. */
+
+:root {
+  /* ── Primary palette ── */
+  --color-primary:       #1a365d;
+  --color-primary-light: #2c5282;
+  --color-primary-bg:    #eef3f8;
+  --color-accent:        #1d4ed8;
+  --color-accent-soft:   #dbeafe;
+
+  /* ── Neutral palette ── */
+  --color-bg:            #f7fafc;
+  --color-surface:       #ffffff;
+  --color-surface-alt:   #f8fafc;
+  --color-border:        #d9e2ec;
+  --color-border-light:  #e2e8f0;
+  --color-text:          #1f2937;
+  --color-text-secondary:#334e68;
+  --color-muted:         #6b7280;
+
+  /* ── Severity colors ── */
+  --color-sev-alta:      #991b1b;
+  --color-sev-alta-bg:   #fee2e2;
+  --color-sev-alta-border:#fca5a5;
+  --color-sev-media:     #92400e;
+  --color-sev-media-bg:  #fef3c7;
+  --color-sev-media-border:#fde68a;
+  --color-sev-baixa:     #1d4ed8;
+  --color-sev-baixa-bg:  #dbeafe;
+  --color-sev-baixa-border:#93c5fd;
+
+  /* ── Confidence colors ── */
+  --color-conf-blindado:       #065f46;
+  --color-conf-blindado-bg:    #d1fae5;
+  --color-conf-blindado-border:#6ee7b7;
+  --color-conf-alta:           #92400e;
+  --color-conf-alta-bg:        #fef3c7;
+  --color-conf-alta-border:    #fcd34d;
+  --color-conf-sugestao:       #1d4ed8;
+  --color-conf-sugestao-bg:    #dbeafe;
+  --color-conf-sugestao-border:#93c5fd;
+
+  /* ── Alert / status colors ── */
+  --color-danger:        #dc2626;
+  --color-danger-bg:     #fef2f2;
+  --color-warning:       #f59e0b;
+  --color-warning-bg:    #fffbeb;
+  --color-success:       #16a34a;
+  --color-success-bg:    #f0fdf4;
+  --color-info:          #2563eb;
+  --color-info-bg:       #eff6ff;
+
+  /* ── Typography ── */
+  --font-family:         'Inter', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+  --font-family-serif:   'Georgia', 'Times New Roman', serif;
+  --font-mono:           'SF Mono', 'Cascadia Code', 'Fira Code', Consolas, monospace;
+  --font-size-xs:        0.6875rem;  /* 11px */
+  --font-size-sm:        0.8125rem;  /* 13px */
+  --font-size-base:      0.875rem;   /* 14px */
+  --font-size-md:        1rem;       /* 16px */
+  --font-size-lg:        1.25rem;    /* 20px */
+  --font-size-xl:        1.5rem;     /* 24px */
+  --font-size-2xl:       2rem;       /* 32px */
+  --font-size-3xl:       2.5rem;     /* 40px */
+  --line-height:         1.6;
+  --line-height-tight:   1.25;
+
+  /* ── Spacing scale (4px base) ── */
+  --sp-1:  4px;
+  --sp-2:  8px;
+  --sp-3:  12px;
+  --sp-4:  16px;
+  --sp-5:  20px;
+  --sp-6:  24px;
+  --sp-8:  32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+
+  /* ── Border radius ── */
+  --radius-sm:   6px;
+  --radius-md:   10px;
+  --radius-lg:   14px;
+  --radius-xl:   18px;
+  --radius-pill:  999px;
+
+  /* ── Shadows ── */
+  --shadow-sm:   0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-md:   0 4px 12px rgba(15, 23, 42, 0.06);
+  --shadow-lg:   0 10px 28px rgba(15, 23, 42, 0.08);
+  --shadow-xl:   0 20px 48px rgba(15, 23, 42, 0.08);
+
+  /* ── Layout ── */
+  --sidebar-width: 240px;
+  --content-max:   1100px;
+}
+
+/* ── Dark mode ── */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-primary:       #93c5fd;
+    --color-primary-light: #60a5fa;
+    --color-primary-bg:    #1e293b;
+    --color-accent:        #60a5fa;
+    --color-accent-soft:   #1e3a5f;
+
+    --color-bg:            #0f172a;
+    --color-surface:       #1e293b;
+    --color-surface-alt:   #1a2332;
+    --color-border:        #334155;
+    --color-border-light:  #475569;
+    --color-text:          #e2e8f0;
+    --color-text-secondary:#94a3b8;
+    --color-muted:         #64748b;
+
+    --color-sev-alta:        #fca5a5;
+    --color-sev-alta-bg:     #450a0a;
+    --color-sev-alta-border: #7f1d1d;
+    --color-sev-media:       #fde68a;
+    --color-sev-media-bg:    #451a03;
+    --color-sev-media-border:#78350f;
+    --color-sev-baixa:       #93c5fd;
+    --color-sev-baixa-bg:    #172554;
+    --color-sev-baixa-border:#1e40af;
+
+    --color-conf-blindado:       #6ee7b7;
+    --color-conf-blindado-bg:    #052e16;
+    --color-conf-blindado-border:#065f46;
+    --color-conf-alta:           #fde68a;
+    --color-conf-alta-bg:        #451a03;
+    --color-conf-alta-border:    #78350f;
+    --color-conf-sugestao:       #93c5fd;
+    --color-conf-sugestao-bg:    #172554;
+    --color-conf-sugestao-border:#1e40af;
+
+    --color-danger:        #f87171;
+    --color-danger-bg:     #450a0a;
+    --color-warning:       #fbbf24;
+    --color-warning-bg:    #451a03;
+    --color-success:       #4ade80;
+    --color-success-bg:    #052e16;
+    --color-info:          #60a5fa;
+    --color-info-bg:       #172554;
+
+    --shadow-sm:   0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md:   0 4px 12px rgba(0, 0, 0, 0.4);
+    --shadow-lg:   0 10px 28px rgba(0, 0, 0, 0.5);
+    --shadow-xl:   0 20px 48px rgba(0, 0, 0, 0.5);
+  }
+}

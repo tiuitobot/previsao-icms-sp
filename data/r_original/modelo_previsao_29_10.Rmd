@@ -1,0 +1,641 @@
+---
+title: "Previsão de Arrecadação do ICMS para 2025 e 2026"
+author: "AEFP - Assessoria de Economia e Finanças Públicas"
+date: "29-10-2025"
+output:
+  word_document: default
+  pdf_document: default
+  html_document: default
+subtitle: "Previsão de Novembro de 2025 a Dezembro de 2026"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r message=FALSE}
+rm(list=ls())
+library(tidyverse)
+library(TSA)
+library(seasonal)
+library(FinTS)
+library(readxl)
+library(forecast)
+library(imputeTS)
+library(urca)
+library(lmtest)
+library(knitr)
+library(fpp3)
+library(stargazer)
+```
+
+
+## Carga dos Dados e Criação das Variáveis
+
+```{r}
+setwd("H:/gs/apt/previsao_icms_R/previsao251029")
+data <- as.data.frame(read_xlsx("Variaveis_para_Previsão_29_10.xlsx"))
+
+mes_atual <- 10
+meses_restantes <- 14
+mes_escrito <- "outubro"
+tail(data[c('date', 'icms_sp', 'igp_di', 'ibc_br', 'dias_uteis')],18)
+```
+
+### Criação das Variáveis
+
+```{r}
+ICMS.ts <- ts(data[,'icms_sp'], start = c(2003, 1),end=c(2026,12), freq = 12)
+IBCBR.ts <- ts(data[,'ibc_br'], start = c(2003, 1),end=c(2026,12), freq = 12)
+IGPDI.ts <- ts(data[,'igp_di'], start = c(2003, 1),end=c(2026,12), freq = 12)
+DIASUTEIS.ts <- ts(data[,'dias_uteis'], start = c(2003, 1),end=c(2026,12), freq = 12)
+#DOLAR.ts <- ts(data[,'dolar'], start = c(2003, 1),end=c(2026,12), freq = 12)
+```
+
+### Diferenças
+
+```{r}
+IBCBR_d <- IBCBR.ts %>% diff(differences = 1)
+ICMS_d <- ICMS.ts %>% diff(differences = 1)
+IGPDI_d <- IGPDI.ts %>% diff(differences = 1)
+```
+
+### Lags
+
+```{r}
+IBCBR_lag <- stats::lag(IBCBR.ts, k = -1) %>% window(end = c(2026,12))
+IGPDI_lag <- stats::lag(IGPDI.ts, k = -1) %>% window(end = c(2026,12))
+DIASUTEIS_lag <- stats::lag(DIASUTEIS.ts, k = -1) %>% window(end = c(2026,12))
+#DOLAR_lag <- stats::lag(DOLAR.ts, k = -1) %>% window(end = c(2026,12))
+
+IBCBR_lag2 <- stats::lag(IBCBR.ts, k = -2) %>% window(end = c(2026,12))
+IGPDI_lag2 <- stats::lag(IGPDI.ts, k = -2) %>% window(end = c(2026,12))
+DIASUTEIS_lag2 <- stats::lag(DIASUTEIS.ts, k = -2) %>% window(end = c(2026,12))
+#DOLAR_lag2 <- stats::lag(DOLAR.ts, k = -2) %>% window(end = c(2026,12))
+
+IBCBR_lag3 <- stats::lag(IBCBR.ts, k = -3) %>% window(end = c(2026,12))
+IGPDI_lag3 <- stats::lag(IGPDI.ts, k = -3) %>% window(end = c(2026,12))
+DIASUTEIS_lag3 <- stats::lag(DIASUTEIS.ts, k = -3) %>% window(end = c(2026,12))
+#DOLAR_lag3 <- stats::lag(DOLAR.ts, k = -3) %>% window(end = c(2026,12))
+
+IBCBR_lag4 <- stats::lag(IBCBR.ts, k = -4) %>% window(end = c(2026,12))
+IGPDI_lag4 <- stats::lag(IGPDI.ts, k = -4) %>% window(end = c(2026,12))
+DIASUTEIS_lag4 <- stats::lag(DIASUTEIS.ts, k = -4) %>% window(end = c(2026,12))
+#DOLAR_lag4 <- stats::lag(DOLAR.ts, k = -4) %>% window(end = c(2026,12))
+```
+
+### Dummies
+
+- LS2008NOV: dummy de quebra estrutural relativa à crise do subprime de 2008
+- TC2020APR04: dummy de mudança temporária relativa ao início do lockdown da pandemia
+- TC2022OUT05: dummy de mudança temporária relativa à LC 194/2022
+
+```{r}
+LS2008NOV <- ts(0, start = c(2003,1), end = c(2026,12), freq = 12)
+window(LS2008NOV, start = c(2008, 11), end = c(2026,12)) <- 1
+
+TC2020APR04 <- ts(0, start = c(2003,1), end = c(2026,12), freq = 12)
+window(TC2020APR04, start = c(2020, 4), end = c(2020,7)) <- 1
+
+TC2022OUT05 <- ts(0, start = c(2003,1), end = c(2026,12), freq = 12)
+window(TC2022OUT05, start = c(2022,10), end = c(2023,05)) <- 1
+
+dummies_icms1 <- ts.union(LS2008NOV, TC2020APR04, TC2022OUT05)
+```
+
+### Plots
+
+#### Série do ICMS em Nível 5 últimos anos
+
+```{r}
+plot(window(ICMS.ts, start = c(2020,11), end = c(2025, 10)))
+```
+
+#### Série do ICMS em Nível e em Primeira Diferença
+
+```{r}
+plot(ICMS.ts)
+plot(ICMS_d)
+```
+
+#### Série do IGP-DI em Nível e em Primeira Diferença
+
+```{r}
+plot(IGPDI.ts)
+plot(IGPDI_d)
+```
+
+#### Série do IBC-Br em Nível e em Primeira Diferença
+
+```{r}
+plot(IBCBR.ts)
+plot(IBCBR_d)
+```
+
+## Modelos de Previsão
+
+```{r}
+training_date2 <- c(2025,mes_atual)
+test_date2 <-  c(2025, ifelse(mes_atual == 12, 1, mes_atual + 1))
+```
+
+
+### Modelo1: AutoArima
+
+- Séries em log
+- Exógenas: dias úteis e dummies
+- Diferenças e defasagens determinadas pelo algoritmo do autoarima
+
+```{r}
+arima_dias <- auto.arima(window(ICMS.ts, end = training_date2),
+                         xreg = window(ts.union(DIASUTEIS.ts, dummies_icms1),
+                                       end = training_date2),
+                         lambda = 0, trace = T)
+
+```
+
+#### Erros Padrão Robustos à Heterocedasticidade
+```{r}
+coeftest(arima_dias)
+```
+#### Teste de Raízes do Polinômio fora do Círculo de Raiz Unitária
+
+```{r}
+abs(polyroot(c(1, -arima_dias$coef)))
+```
+#### Teste de Lung-Box
+
+```{r}
+Box.test(arima_dias$residuals,lag=36,type="Ljung-Box",fitdf = 4)
+plot(arima_dias$residuals)
+acf(arima_dias$residuals, na.action = na.omit)
+pacf(arima_dias$residuals, na.action = na.omit)
+```
+
+### Modelo2: Arimax IGP-DI lag 1, IBC-BR lag 1, Dias Úteis e Dummies
+
+- Séries em log
+- Exógenas: IGP-DI e IBC-Br com uma defasagem, dias úteis e dummies
+- Diferenças e defasagens: (3,1,0), (2,0,0) 
+
+```{r}
+arimax_igpdi_dias_ibc <- Arima(window(ICMS.ts, end = training_date2),
+#                               order = c(2,1,0), seasonal = c(2,0,0),
+                               order = c(3,1,0), seasonal = c(2,0,0),
+                               xreg = window(ts.union(IGPDI_lag, DIASUTEIS.ts,
+                                                      IBCBR_lag,
+                                                      dummies_icms1),
+                                             end = training_date2),
+                               method = "ML", include.mean = TRUE, lambda = 0)
+
+# arimax_igpdi_dias_ibc <- auto.arima(window(ICMS.ts, end = training_date2),
+#                                     d = 1,
+#                                xreg = window(ts.union(IGPDI_lag, DIASUTEIS.ts,     
+#                                                       IBCBR_lag,
+#                                                       dummies_icms1), 
+#                                              end = training_date2),
+#                               lambda = 0, trace = TRUE) 
+
+```
+
+#### Erros Padrão Robustos à Heterocedasticidade
+```{r}
+coeftest(arimax_igpdi_dias_ibc)
+```
+#### Teste de Raízes do Polinômio fora do Círculo de Raiz Unitária
+
+```{r}
+abs(polyroot(c(1, -arimax_igpdi_dias_ibc$coef)))
+```
+#### Teste de Lung-Box
+
+```{r}
+Box.test(arimax_igpdi_dias_ibc$residuals,lag=24,type="Ljung-Box",fitdf = 4)
+plot(arimax_igpdi_dias_ibc$residuals)
+acf(arimax_igpdi_dias_ibc$residuals, na.action = na.omit)
+pacf(arimax_igpdi_dias_ibc$residuals, na.action = na.omit)
+```
+
+### Modelo3: Arimax IGP-DI, IBC-BR, IBC-BR lag 1, Dias Úteis e Dummies
+
+- Séries em log
+- Exógenas: IGP-DI, IBC-Br, IBC-Br com uma defasagem, dias úteis e dummies
+- Diferenças e defasagens: (0,1,1), (0,1,1) 
+
+```{r}
+arimax_igpdi_ibc_dias_teste <- Arima(window(ICMS.ts, end = training_date2),
+                                     order = c(0,1,1), seasonal = c(0,1,1),
+                                     xreg = window(ts.union(IGPDI.ts,
+                                                            IBCBR_lag,
+                                                            IBCBR.ts,
+                                                            DIASUTEIS.ts,
+                                                            dummies_icms1), 
+                                                   end = training_date2),
+                                    method = "ML", include.mean = TRUE, lambda = 0)
+```
+
+#### Erros Padrão Robustos à Heterocedasticidade
+```{r}
+coeftest(arimax_igpdi_ibc_dias_teste)
+```
+#### Teste de Raízes do Polinômio fora do Círculo de Raiz Unitária
+
+```{r}
+abs(polyroot(c(1, -arimax_igpdi_ibc_dias_teste$coef)))
+```
+#### Teste de Lung-Box
+
+```{r}
+Box.test(arimax_igpdi_ibc_dias_teste$residuals,lag=24,type="Ljung-Box",fitdf = 4)
+plot(arimax_igpdi_ibc_dias_teste$residuals)
+acf(arimax_igpdi_ibc_dias_teste$residuals, na.action = na.omit)
+pacf(arimax_igpdi_ibc_dias_teste$residuals, na.action = na.omit)
+```
+
+### Modelo4: Arimax IBC-BR, IBC-BR lag 1, Dias Úteis e Dummies
+
+- Séries em log
+- Exógenas: IBC-Br, IBC-Br com uma defasagem, dias úteis e dummies
+- Diferenças e defasagens: (0,1,1), (0,1,2)
+- Obs: sem inflação
+
+```{r}
+arimax_ibc_teste2 <- Arima(window(ICMS.ts, end = training_date2),
+                                     order = c(0,1,1), seasonal = c(0,1,2),
+                                     xreg = window(ts.union(IBCBR_lag,
+                                                            IBCBR.ts,
+                                                            DIASUTEIS.ts,
+                                                            dummies_icms1), 
+                                                   end = training_date2),
+                                    method = "ML", include.mean = TRUE, lambda = 0) 
+```
+
+#### Erros Padrão Robustos à Heterocedasticidade
+```{r}
+coeftest(arimax_ibc_teste2)
+```
+#### Teste de Raízes do Polinômio fora do Círculo de Raiz Unitária
+
+```{r}
+abs(polyroot(c(1, -arimax_ibc_teste2$coef)))
+```
+#### Teste de Lung-Box
+
+```{r}
+Box.test(arimax_ibc_teste2$residuals,lag=24,type="Ljung-Box",fitdf = 4)
+plot(arimax_ibc_teste2$residuals)
+acf(arimax_ibc_teste2$residuals, na.action = na.omit)
+pacf(arimax_ibc_teste2$residuals, na.action = na.omit)
+```
+
+### Modelo5: Arimax IGP-DI, IBC-BR, IBC-BR lag 1 e Dummies
+
+- Séries em log
+- Exógenas: IGP-DI, IBC-Br, IBC-Br com uma defasagem e dummies
+- Diferenças e defasagens: (0,1,1), (0,1,2)
+- Obs: sem dias úteis
+
+```{r}
+arimax_ibc_igp_teste3 <- Arima(window(ICMS.ts, end = training_date2),
+                           order = c(0,1,1), seasonal = c(0,1,2),
+                           xreg = window(ts.union(IGPDI.ts,
+                                                  IBCBR_lag,
+                                                  IBCBR.ts,
+                                                  dummies_icms1), 
+                                         end = training_date2),
+                           method = "ML", include.mean = TRUE, lambda = 0)
+
+```
+
+#### Erros Padrão Robustos à Heterocedasticidade
+```{r}
+coeftest(arimax_ibc_igp_teste3)
+```
+#### Teste de Raízes do Polinômio fora do Círculo de Raiz Unitária
+
+```{r}
+abs(polyroot(c(1, -arimax_ibc_igp_teste3$coef)))
+```
+#### Teste de Lung-Box
+
+```{r}
+Box.test(arimax_ibc_igp_teste3$residuals,lag=24,type="Ljung-Box",fitdf = 4)
+plot(arimax_ibc_igp_teste3$residuals)
+acf(arimax_ibc_igp_teste3$residuals, na.action = na.omit)
+pacf(arimax_ibc_igp_teste3$residuals, na.action = na.omit)
+```
+
+## Acurácia dos Modelos Fora da Amostra
+
+### Acurácia do Modelo1
+
+```{r}
+f1 <- forecast::forecast(arima_dias,
+               xreg = window(ts.union(DIASUTEIS.ts,dummies_icms1),
+                             start = test_date2),
+               ) %>% forecast::accuracy(window(ICMS.ts, start = test_date2))
+f1
+```
+### Acurácia do Modelo2
+
+```{r}
+f5 <- forecast::forecast(arimax_igpdi_dias_ibc,
+               xreg = window(ts.union(IGPDI_lag, DIASUTEIS.ts, IBCBR_lag,
+                                      dummies_icms1), start = test_date2)) %>%
+  forecast::accuracy(window(ICMS.ts, start = test_date2))
+f5
+```
+### Acurácia do Modelo3
+
+```{r}
+f_teste <- forecast::forecast(arimax_igpdi_ibc_dias_teste,
+               xreg = window(ts.union(IGPDI.ts,
+                                      IBCBR_lag,
+                                      IBCBR.ts,
+                                      DIASUTEIS.ts,
+                                      dummies_icms1), start = test_date2)) %>%
+  forecast::accuracy(window(ICMS.ts, start = test_date2))
+f_teste
+```
+
+
+### Acurácia do Modelo4
+
+```{r}
+f_teste2 <- forecast::forecast(arimax_ibc_teste2,
+                    xreg = window(ts.union(IBCBR_lag,
+                                           IBCBR.ts,
+                                           DIASUTEIS.ts,
+                                           dummies_icms1), start = test_date2)) %>%
+  forecast::accuracy(window(ICMS.ts, start = test_date2))
+f_teste2
+```
+### Acurácia do Modelo5
+
+```{r}
+f_teste3 <- forecast::forecast(arimax_ibc_igp_teste3,
+                     xreg = window(ts.union(IGPDI.ts,
+                                            IBCBR_lag,
+                                            IBCBR.ts,
+                                            dummies_icms1), start = test_date2)) %>%
+  forecast::accuracy(window(ICMS.ts, start = test_date2))
+f_teste3
+```
+### MAPE Dentro da Amostra
+
+```{r}
+MAPES <- t(data.frame(f1 = f1[,5], f5= f5[,5],
+                      f_teste = f_teste[,5],
+                      f_teste2 = f_teste2[,5],
+                      f_teste3 = f_teste3[,5])) %>% as_tibble() 
+
+MAPES$modelos <- c('Modelo1','Modelo2','Modelo3','Modelo4','Modelo5')
+MAPES %>% 
+  writexl::write_xlsx(paste0("mapes_por_modelo_", 
+                             mes_escrito,".xlsx"))
+MAPES
+```
+## Previsões
+
+### Realizado 
+
+```{r}
+b_before <- window(ICMS.ts, start = c(2022, 01), end = c(2025, mes_atual)) %>% as_tibble()
+tail(b_before)
+```
+```{r results=FALSE}
+#só usar quando não há MAPE do test set
+MAPES %>% transmute(inverso = 1/`Training set`)
+INV.MAPE <- MAPES %>% transmute(inv = 1/(sum(1/abs(`Training set`))*(abs(`Training set`)))) %>% as.matrix()
+
+PESO.ARITMERICO <- MAPES %>% transmute(peso = 1/nrow(MAPES)) %>% as.matrix()
+```
+
+### Previsão para restante do ano do Modelo1 
+
+Com intervalos de confiança de 50%, 75% e 95%
+
+```{r}
+b1 <- forecast::forecast(arima_dias, level = c(50,75,95),
+               xreg = window(ts.union(DIASUTEIS.ts,dummies_icms1), start = test_date2))  %>% as_tibble() %>% tail(n = meses_restantes) %>% 
+  rename(f1_mean = "Point Forecast", f1_50_l = "Lo 50", f1_50_h = "Hi 50",
+         f1_75_l = "Lo 75", f1_75_h = "Hi 75", f1_95_l = "Lo 95", f1_95_h = "Hi 95")
+b1
+```
+
+### Previsão para restante do ano do Modelo2 
+
+Com intervalos de confiança de 50%, 75% e 95%
+
+```{r}
+b5 <- forecast::forecast(arimax_igpdi_dias_ibc, level = c(50,75,95),
+               xreg = window(ts.union(IGPDI_lag, DIASUTEIS.ts, IBCBR_lag,
+                                      dummies_icms1), start = test_date2)) %>%
+  as_tibble() %>% tail(n= meses_restantes) %>% 
+  rename(f5_mean = "Point Forecast", f5_50_l = "Lo 50", f5_50_h = "Hi 50",
+         f5_75_l = "Lo 75", f5_75_h = "Hi 75", f5_95_l = "Lo 95", f5_95_h = "Hi 95")
+b5
+```
+
+### Previsão para restante do ano do Modelo3 
+
+Com intervalos de confiança de 50%, 75% e 95%
+
+```{r}
+bteste1 <- forecast::forecast(arimax_igpdi_ibc_dias_teste, level = c(50,75,95),
+               xreg = window(ts.union(IGPDI.ts,
+                                      IBCBR_lag,
+                                      IBCBR.ts,
+                                      DIASUTEIS.ts,
+                                      dummies_icms1), start = test_date2)) %>%
+  as_tibble() %>% tail(n= meses_restantes) %>% 
+  rename(fteste_mean = "Point Forecast", fteste_50_l = "Lo 50", fteste_50_h = "Hi 50",
+         fteste_75_l = "Lo 75", fteste_75_h = "Hi 75", fteste_95_l = "Lo 95", fteste_95_h = "Hi 95")
+bteste1
+```
+
+### Previsão para restante do ano do Modelo4 
+
+Com intervalos de confiança de 50%, 75% e 95%
+
+```{r}
+bteste2 <- forecast::forecast(arimax_ibc_teste2, level = c(50,75,95),
+               xreg = window(ts.union(IBCBR_lag,
+                                      IBCBR.ts,
+                                      DIASUTEIS.ts,
+                                      dummies_icms1), start = test_date2)) %>%
+  as_tibble() %>% tail(n= meses_restantes) %>% 
+  rename(fteste2_mean = "Point Forecast", fteste2_50_l = "Lo 50", fteste2_50_h = "Hi 50",
+         fteste2_75_l = "Lo 75", fteste2_75_h = "Hi 75", fteste2_95_l = "Lo 95", fteste2_95_h = "Hi 95")
+bteste2
+```
+
+### Previsão para restante do ano do Modelo5 
+
+Com intervalos de confiança de 50%, 75% e 95%
+
+```{r}
+bteste3 <- forecast::forecast(arimax_ibc_igp_teste3, level = c(50,75,95),
+               xreg = window(ts.union(IGPDI.ts,
+                                      IBCBR_lag,
+                                      IBCBR.ts,
+                                      dummies_icms1), start = test_date2)) %>%
+  as_tibble() %>% tail(n= meses_restantes) %>% 
+  rename(fteste3_mean = "Point Forecast", fteste3_50_l = "Lo 50", fteste3_50_h = "Hi 50",
+         fteste3_75_l = "Lo 75", fteste3_75_h = "Hi 75", fteste3_95_l = "Lo 95", fteste3_95_h = "Hi 95")
+bteste3
+```
+
+## Resultados de Todos os Modelos
+
+```{r}
+b_all <- bind_cols(b1,b5, bteste1, bteste2, bteste3)
+
+b_mean <- b_all %>% select(f1_mean,f5_mean,fteste_mean,fteste2_mean,fteste3_mean) %>% as.matrix()
+
+b_50_low <- b_all %>% select(f1_50_l,f5_50_l,fteste_50_l,fteste2_50_l,fteste3_50_l) %>% as.matrix()
+
+b_50_high <- b_all %>% select(f1_50_h,f5_50_h,fteste_50_h,fteste2_50_h,fteste3_50_h) %>% as.matrix()
+
+
+b_75_low <- b_all %>% select(f1_75_l,f5_75_l,fteste_75_l,fteste2_75_l,fteste3_75_l) %>% as.matrix()
+
+b_75_high <- b_all %>% select(f1_75_h,f5_75_h,fteste_75_h,fteste2_75_h,fteste3_75_h) %>% as.matrix()
+
+
+b_95_low <- b_all %>% select(f1_95_l,f5_95_l, fteste_95_l,fteste2_95_l,fteste3_95_l) %>% as.matrix()
+
+b_95_high <- b_all %>% select(f1_95_h,f5_95_h, fteste_95_h,fteste2_95_h,fteste3_95_h) %>% as.matrix()
+
+previsoes <- data.frame(b_mean%*%PESO.ARITMERICO,
+                        b_50_low%*%PESO.ARITMERICO,
+                        b_50_high%*%PESO.ARITMERICO,
+                        b_75_low%*%PESO.ARITMERICO,
+                        b_75_high%*%PESO.ARITMERICO,
+                        b_95_low%*%PESO.ARITMERICO,
+                        b_95_high%*%PESO.ARITMERICO)
+
+realizados <- data.frame(b_before,b_before,b_before,b_before,b_before,b_before,b_before)
+
+colnames(previsoes) <- c("mean", "low_50", "high_50", "low_75", "high_75", "low_95","high_95")
+
+colnames(realizados) <- c("mean", "low_50", "high_50", "low_75", "high_75", "low_95","high_95")
+
+df_final <- bind_rows(realizados, previsoes) %>%
+  mutate(month = seq(from = as.Date("2022-01-01"), to = as.Date("2026-12-01"), by = 'month'))
+```
+
+### Média da Previsão dos 5 modelos para 2025
+
+```{r}
+df_final[37:48,] %>% select(mean) %>% sum()
+```
+
+### Média da Previsão dos 5 modelos para 2026
+
+```{r}
+df_final %>% tail(12) %>% select(mean) %>% sum()
+```
+
+### Médias Mensais das Previsões
+
+Com intervalos de confiança de 50%, 75% e 95%.
+
+```{r}
+writexl::write_xlsx(df_final,
+                    paste0("icms_por_ic_", mes_escrito,".xlsx"))
+df_final
+```
+
+## Total de 2025 previsto por cada modelo
+
+```{r}
+media_modelos <- b_all %>% select(f1_mean,f5_mean,fteste_mean,fteste2_mean,fteste3_mean) 
+
+todos <- realizados %>% select(-1,-2) %>% 
+  rename(f1_mean = "high_50",
+         f5_mean = "low_75",
+         fteste_mean = "high_75",
+         fteste2_mean = "low_95",
+         fteste3_mean = "high_95")
+
+todos <- bind_rows(todos,media_modelos)
+
+todos %>% summarise(f1 = sum(f1_mean[37:48]),
+          f5 = sum(f5_mean[37:48]),
+          fteste = sum(fteste_mean[37:48]),
+          fteste2 =sum(fteste2_mean[37:48]),
+          fteste3 =sum(fteste3_mean[37:48]))
+```
+
+## Total de 2026 previsto por cada modelo
+
+```{r}
+media_modelos <- b_all %>% select(f1_mean,f5_mean,fteste_mean,fteste2_mean,fteste3_mean) 
+
+realizados %>% select(-1,-2) %>% 
+  rename(f1_mean = "high_50",
+         f5_mean = "low_75",
+         fteste_mean = "high_75",
+         fteste2_mean = "low_95",
+         fteste3_mean = "high_95") %>% 
+  bind_rows(media_modelos) %>% tail(12) %>% 
+  summarise(f1 = sum(f1_mean),
+            f5 = sum(f5_mean),
+            fteste = sum(fteste_mean),
+            fteste2 =sum(fteste2_mean),
+            fteste3 =sum(fteste3_mean))
+```
+```{r}
+# SALVANDO MEDIA ARITMETICA
+realizados %>% select(-1,-2) %>% 
+  rename(f1_mean = "high_50",
+         f5_mean = "low_75",
+         fteste_mean = "high_75",
+         fteste2_mean = "low_95",
+         fteste3_mean = "high_95") %>% 
+  bind_rows(media_modelos) %>% 
+  mutate(month = seq(from = as.Date("2022-01-01"), to = as.Date("2026-12-01"), by = 'month')) %>%
+  rename("Modelo 1" = "f1_mean",
+         "Modelo 2" = "f5_mean",
+         "Modelo 3" = "fteste_mean",
+         "Modelo 4" = "fteste2_mean",
+         "Modelo 5" = "fteste3_mean") %>% 
+  writexl::write_xlsx(paste0("previsoes_por_modelo_", 
+                             mes_escrito,".xlsx"))
+```
+
+## Plot das Previsões de cada Modelo
+
+```{r}
+realizados %>% select(-1,-2) %>% 
+  rename(f1_mean = "high_50",
+         f5_mean = "low_75",
+         fteste_mean = "high_75",
+         fteste2_mean = "low_95",
+         fteste3_mean = "high_95") %>% 
+  bind_rows(media_modelos) %>% 
+  mutate(month = seq(from = as.Date("2022-01-01"), to = as.Date("2026-12-12"), by = 'month')) %>%
+  pivot_longer(cols = c(f1_mean,f5_mean,fteste_mean,fteste2_mean,fteste3_mean),
+               names_to = "model",
+               values_to = "icms") %>% 
+  mutate(icms = icms/1000000000,
+         model = case_when(model == "f1_mean" ~ "Modelo 1",
+                           model == "f5_mean" ~ "Modelo 2",
+                           model == "fteste_mean" ~ "Modelo 3",
+                           model == "fteste2_mean" ~ "Modelo 4",
+                           model == "fteste3_mean" ~ "Modelo 5")) %>%
+  ggplot() + 
+  geom_line(aes(x = month, y = icms, color = model), linewidth = 1.1) +
+  geom_vline(xintercept = as.numeric(as.Date("2025-10-01"))) +
+  scale_color_brewer(palette="RdYlGn") +
+  theme_classic() +
+  xlab("Data") +
+  ylab("ICMS (em bilhões)")
+```
+
+```{r}
+#salvando o gráfico
+  ggsave(filename = paste0('previsoes_',
+                         mes_escrito, '.png'), path = '.', units = 'in', 
+       width = 8, height = 6, dpi = 100 )
+```

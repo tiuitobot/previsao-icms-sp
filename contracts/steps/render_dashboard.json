@@ -1,0 +1,27 @@
+{
+  "id": "render_dashboard",
+  "name": "Render Dashboard",
+  "description": "Renders interactive dashboard HTML with Plotly charts, KPIs (annual forecast, best model, MAPE), scenario cards, and executive summary.",
+  "type": "deterministic",
+  "extends": "_base_renderer",
+  "script": "steps/render_dashboard.py",
+  "function": "main",
+  "inputs": {
+    "required": ["sarimax_results", "generate_charts"],
+    "optional": ["qualitative_analysis"],
+    "expects_keys": ["plotly_charts", "annual_totals", "best_model", "forecasts"]
+  },
+  "outputs": {
+    "primary": "dashboard.html",
+    "keys": ["html_path", "status"]
+  },
+  "compatible_executors": ["python"],
+  "cost_estimate": {"fixed_usd": 0},
+  "tags": ["rendering", "dashboard", "html", "plotly"],
+  "library": {
+    "category": "concrete",
+    "origin": "previsao-icms-sp",
+    "domain": "financeiro",
+    "subdomain": "macro"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "id": "qualitative_analysis",
+  "name": "Qualitative Analysis",
+  "description": "LLM interprets SARIMAX results: risk assessment, scenario narratives, policy implications, comparison with market consensus.",
+  "type": "llm",
+  "extends": "_base_llm_analyzer",
+  "inputs": {
+    "required": ["run_sarimax_models", "validate_forecasts"],
+    "expects_keys": ["forecasts", "diagnostics", "annual_totals", "checks", "warnings"]
+  },
+  "outputs": {
+    "primary": "qualitative_analysis.json",
+    "schema": "contracts/schemas/qualitative_analysis.schema.json",
+    "keys": ["executive_summary", "risk_assessment", "scenario_narratives", "policy_implications", "market_comparison", "status"]
+  },
+  "contracts": {
+    "gpt-5.4": "contracts/v1/qualitative_analysis.md",
+    "gpt-4.1": "contracts/v1/qualitative_analysis.md"
+  },
+  "compatible_executors": ["copilot_cli", "azure_openai"],
+  "cost_estimate": {"fixed_usd": 0.30, "notes": "~2000 output tokens with reasoning medium"},
+  "tags": ["analysis", "qualitative", "scenarios", "risk"],
+  "library": {
+    "category": "concrete",
+    "origin": "previsao-icms-sp",
+    "domain": "financeiro",
+    "subdomain": "macro"
+  }
+}

@@ -1,0 +1,137 @@
+"""Prepare consolidated base: merge macro + SEFAZ, create lags, dummies, projections."""
+import json
+import numpy as np
+import pandas as pd
+from pathlib import Path
+from calendar import monthrange
+from datetime import datetime
+
+
+def _dias_uteis(ano, mes):
+    """Calculate business days in a month."""
+    dias_total = monthrange(ano, mes)[1]
+    return sum(1 for dia in range(1, dias_total + 1)
+               if datetime(ano, mes, dia).weekday() < 5)
+
+
+def _load(od: Path, name: str) -> dict:
+    f = od / f"{name}.json"
+    return json.loads(f.read_text()) if f.exists() else {}
+
+
+def main(*, output_dir: str = "", **kwargs) -> dict:
+    """Build consolidated base with features."""
+    od = Path(output_dir)
+
+    # Get upstream data from disk
+    macro = _load(od, "fetch_macro_data")
+    sefaz = _load(od, "load_sefaz_data")
+
+    # Default scenario params (interpreter removed — use defaults)
+    horizon_end = 2026
+    pib_override = None
+    inflation_override = None
+
+    # Build date range
+    dates = pd.date_range(start="2003-01-01", end=f"{horizon_end}-12-01", freq="MS")
+    df = pd.DataFrame({"data": dates})
+    df["ano"] = df["data"].dt.year
+    df["mes"] = df["data"].dt.month
+
+    # Merge IBC-BR
+    ibc_df = pd.DataFrame(macro.get("ibc_br", []))
+    if len(ibc_df) > 0:
+        ibc_df["data"] = pd.to_datetime(ibc_df["data"])
+        df = df.merge(ibc_df, on="data", how="left")
+    else:
+        df["ibc_br"] = np.nan
+
+    # Merge IGP-DI
+    igp_df = pd.DataFrame(macro.get("igp_di", []))
+    if len(igp_df) > 0:
+        igp_df["data"] = pd.to_datetime(igp_df["data"])
+        df = df.merge(igp_df, on="data", how="left")
+    else:
+        df["igp_di"] = np.nan
+
+    # Merge ICMS-SP
+    icms_df = pd.DataFrame(sefaz.get("icms_sp_series", []))
+    if len(icms_df) > 0:
+        icms_df["data"] = pd.to_datetime(icms_df["data"])
+        df = df.merge(icms_df, on="data", how="left")
+    else:
+        df["icms_sp"] = np.nan
+
+    # Business days
+    df["dias_uteis"] = df.apply(lambda x: _dias_uteis(int(x["ano"]), int(x["mes"])), axis=1)
+
+    # Structural dummies (from original model)
+    df["LS2008NOV"] = (((df["ano"] == 2008) & (df["mes"] >= 11)) | (df["ano"] > 2008)).astype(int)
+    df["TC2020APR04"] = ((df["ano"] == 2020) & (df["mes"] >= 4) & (df["mes"] <= 7)).astype(int)
+    df["TC2022OUT05"] = (((df["ano"] == 2022) & (df["mes"] >= 10)) |
+                          ((df["ano"] == 2023) & (df["mes"] <= 5))).astype(int)
+
+    # Lags
+    for col in ["ibc_br", "igp_di", "dias_uteis"]:
+        if col in df.columns:
+            for lag in range(1, 5):
+                df[f"{col}_lag{lag}"] = df[col].shift(lag)
+
+    # Forward projection for IBC-BR using Focus/PIB
+    focus = macro.get("focus_expectations", {})
+    pib_growth = float(pib_override) / 100 if pib_override else (focus.get("PIB Total", 2.5) / 100)
+
+    last_ibc = df.loc[df["ibc_br"].notna(), "ibc_br"].iloc[-1] if df["ibc_br"].notna().any() else 150.0
+    last_ibc_date = df.loc[df["ibc_br"].notna(), "data"].iloc[-1]
+    monthly_growth = (1 + pib_growth) ** (1/12) - 1
+
+    future_mask = (df["data"] > last_ibc_date) & df["ibc_br"].isna()
+    for i, idx in enumerate(df[future_mask].index):
+        df.loc[idx, "ibc_br"] = last_ibc * ((1 + monthly_growth) ** (i + 1))
+
+    # Forward projection for IGP-DI
+    igpm_growth = float(inflation_override) / 100 if inflation_override else (focus.get("IGP-M", 5.0) / 100)
+
+    last_igp = df.loc[df["igp_di"].notna(), "igp_di"].iloc[-1] if df["igp_di"].notna().any() else 100.0
+    last_igp_date = df.loc[df["igp_di"].notna(), "data"].iloc[-1]
+    monthly_igp = (1 + igpm_growth) ** (1/12) - 1
+
+    future_mask_igp = (df["data"] > last_igp_date) & df["igp_di"].isna()
+    for i, idx in enumerate(df[future_mask_igp].index):
+        df.loc[idx, "igp_di"] = last_igp * ((1 + monthly_igp) ** i)
+
+    # Recalculate lags after projection fill
+    for col in ["ibc_br", "igp_di"]:
+        for lag in range(1, 5):
+            df[f"{col}_lag{lag}"] = df[col].shift(lag)
+
+    # Split train/future
+    last_icms_date = df.loc[df["icms_sp"].notna(), "data"].max() if df["icms_sp"].notna().any() else pd.Timestamp("2024-01-01")
+    train = df[df["data"] <= last_icms_date].copy()
+    future = df[df["data"] > last_icms_date].copy()
+
+    # Convert to serializable format
+    def df_to_records(frame):
+        frame = frame.copy()
+        frame["data"] = frame["data"].dt.strftime("%Y-%m-%d")
+        return frame.replace({np.nan: None}).to_dict(orient="records")
+
+    result = {
+        "base_data": df_to_records(df),
+        "train_data": df_to_records(train),
+        "future_data": df_to_records(future),
+        "n_columns": len(df.columns),
+        "n_rows": len(df),
+        "horizon_end": horizon_end,
+        "scenario_params": {
+            "pib_growth_pct": round(pib_growth * 100, 2),
+            "igpm_growth_pct": round(igpm_growth * 100, 2),
+            "source": "Focus consensus" if not pib_override else "user override",
+        },
+        "status": "ok"
+    }
+
+    out_file = od / "prepare_base.json"
+    out_file.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    return result

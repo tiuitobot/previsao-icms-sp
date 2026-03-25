@@ -1,0 +1,32 @@
+{
+  "description": "Previsão ICMS-SP: adapta cenários macro, seleção de modelos, horizonte e outputs conforme request do usuário",
+  "input_spec": {
+    "accepts_text_request": true,
+    "example_requests": [
+      "previsão base com todos os modelos",
+      "cenário otimista com PIB +3.5%",
+      "cenário pessimista sem crescimento",
+      "apenas modelos 3 e 4, horizonte até 2027",
+      "rodar sem análise qualitativa, só dashboard",
+      "incluir cross-check com R"
+    ]
+  },
+  "conditional_steps": {
+    "qualitative_analysis": {"condition": "user requests qualitative/narrative analysis or scenarios", "default": "skip"},
+    "cross_validate_r": {"condition": "user requests R cross-check or first run", "default": "skip"},
+    "render_academic": {"condition": "user requests academic appendix or full report", "default": "active"},
+    "render_dashboard": {"condition": "always unless user explicitly asks for academic only", "default": "active"}
+  },
+  "parameterizable": {
+    "prepare_base": {
+      "pib_growth_override": "detect from request: percentage or 'base' for Focus consensus",
+      "inflation_override": "detect from request: percentage or 'base' for Focus consensus",
+      "horizon_end": "detect from request: year (default 2026)"
+    },
+    "run_sarimax_models": {
+      "models_to_run": "detect from request: list of model numbers 1-5 (default: all)",
+      "n_simulations": "detect from request: Monte Carlo count (default: 1000)"
+    }
+  },
+  "interpreter_model": "gpt-4.1-mini"
+}

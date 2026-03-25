@@ -1,0 +1,152 @@
+{# _executive-opening.html.j2 — Shared executive opening. #}
+
+<section class="executive-page">
+  <div class="executive-title">Quadro Executivo</div>
+  <p class="executive-subtitle">{{ report_sections.executive_opening.subtitle if report_sections and report_sections.executive_opening else 'Visão inicial para tomada de decisão editorial. Esta página concentra o que exige correção imediata, o que pode circular com nota de atualização e o que precisa de tratamento explícito já nesta entrega.' }}</p>
+
+  <div class="executive-meta">
+    <div class="meta-chip"><strong>Material:</strong> {{ material }}</div>
+    <div class="meta-chip"><strong>Data:</strong> {{ date }}</div>
+    <div class="meta-chip"><strong>Versão:</strong> {{ version }}</div>
+  </div>
+
+  <h3>Resumo da gravidade dos achados</h3>
+  <div class="executive-stats">
+    <div class="executive-stat sev-critical"><div class="n">{{ findings_high | length }}</div><div>Críticos</div></div>
+    <div class="executive-stat sev-medium"><div class="n">{{ findings_medium | length }}</div><div>Médios</div></div>
+    <div class="executive-stat sev-low"><div class="n">{{ findings_low | length }}</div><div>Menores</div></div>
+    <div class="executive-stat"><div class="n">{{ audit_totals.total_rendered }}</div><div>Total consolidado</div></div>
+    {% if refuted_findings_summary and refuted_findings_summary.total %}
+    <a class="executive-stat" href="#anexo-refutados-revisao" style="text-decoration:none; color:inherit;">
+      <div class="n">{{ refuted_findings_summary.total }}</div><div>Refutados em revisão</div>
+    </a>
+    {% endif %}
+  </div>
+  {% if refuted_findings_summary and refuted_findings_summary.total %}
+  <p class="table-note">O contador abre o anexo de refutados. Esses itens não entram na contagem acionável acima.</p>
+  {% endif %}
+
+  {% if quality_dashboard and quality_dashboard.primers %}
+  <h3>Leitura temporal consolidada</h3>
+  <div class="quality-grid">
+    {% for item in quality_dashboard.primers %}
+    <div class="quality-card">
+      <h4>{{ item.label }}</h4>
+      <div class="severity-chip-row">
+        {% for badge in item.badges %}
+          {% if badge.count > 0 %}
+          <span class="badge {{ badge.class }}">{{ badge.label }}: {{ badge.count }}</span>
+          {% endif %}
+        {% endfor %}
+        {% if item.total == 0 %}
+        <span class="badge badge-muted">Sem ocorrências nesta run</span>
+        {% endif %}
+      </div>
+      <p>{{ item.description }}</p>
+      <p class="table-note">{{ item.summary }}</p>
+      <p class="table-note"><strong>Como aplicar:</strong> {{ item.application_note }}</p>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if review_assurance and review_assurance.tier_cards %}
+  <h3>Segurança para agir sobre os achados</h3>
+  <div class="quality-grid">
+    {% for item in review_assurance.tier_cards %}
+    <div class="quality-card">
+      <h4>{{ item.emoji }} {{ item.plural_label }}</h4>
+      <div class="severity-chip-row">
+        {% for badge in item.badges %}
+          {% if badge.count > 0 %}
+          <span class="badge {{ badge.class }}">{{ badge.label }}: {{ badge.count }}</span>
+          {% endif %}
+        {% endfor %}
+        {% if item.total == 0 %}
+        <span class="badge badge-muted">Sem ocorrências nesta run</span>
+        {% endif %}
+      </div>
+      <p>{{ item.definition }}</p>
+      {% if item.precision_label %}<p class="table-note"><strong>{{ item.precision_label }}</strong></p>{% endif %}
+      {% if item.reader_interpretation %}<p class="table-note">{{ item.reader_interpretation }}</p>{% endif %}
+      <p class="table-note">{{ item.count }} achado(s) nesta faixa.</p>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="summary-box">
+    {% if report_sections and report_sections.executive_opening and report_sections.executive_opening.summary_box_intro %}
+      <p class="executive-summary-primary">{{ report_sections.executive_opening.summary_box_intro }}</p>
+    {% endif %}
+    {% for paragraph in executive_summary[:2] %}
+      {% if paragraph['items'] %}
+      {% if paragraph['lead'] %}<p class="executive-summary-primary">{{ paragraph['lead'] }}</p>{% endif %}
+      <ul class="summary-list">
+        {% for item in paragraph['items'] %}<li>{{ item }}</li>{% endfor %}
+      </ul>
+      {% else %}
+      <p class="{{ 'executive-summary-final' if loop.last else 'executive-summary-primary' }}">{{ paragraph['lead'] | default(paragraph, true) }}</p>
+      {% endif %}
+    {% endfor %}
+  </div>
+
+  <div class="risk-banner">
+    {% set assurance_risk = review_assurance.residual_risk if review_assurance and review_assurance.residual_risk else residual_risk %}
+    {% set assurance_guidance = review_assurance.application_guidance if review_assurance and review_assurance.application_guidance else none %}
+    <div class="risk-card">
+      <strong>{{ assurance_risk.label }}</strong>
+      <p>{{ assurance_risk.explanation }}</p>
+    </div>
+    <div class="risk-card" style="background:{% if tier == 'premium' %}#f0fdf4; border-color:#bbf7d0{% else %}#fff1f2; border-color:#f0b5bd{% endif %};">
+      <strong style="color:{% if tier == 'premium' %}#166534{% else %}#8a1c2b{% endif %};">{{ assurance_guidance.headline if assurance_guidance else assurance_risk.status }}</strong>
+      <p>{{ assurance_guidance.body if assurance_guidance else ('Leitura prática: esta run já fornece base forte para corrigir conteúdo, revisar gabaritos e atualizar trechos jurídicos relevantes. O acabamento final de publicação continua sendo a camada humana ideal.' if tier == 'premium' else 'Leitura prática: trate esta run como triagem técnica estruturada. Antes de publicar, aplique as correções prioritárias e considere validação adicional.') }}</p>
+    </div>
+  </div>
+
+  {% if material_error_summary and material_error_summary.health_seal and material_error_summary.health_seal.count > 0 %}
+  <div class="health-seal">
+    <p class="health-seal-title"><strong>✅ {{ material_error_summary.health_seal.product_label | default('Controles automáticos aplicados', true) }}</strong></p>
+    <p>{{ material_error_summary.health_seal.headline }}.</p>
+    {% if material_error_summary.health_seal.product_note %}<p>{{ material_error_summary.health_seal.product_note }}</p>{% endif %}
+    {% if material_error_summary.health_seal.detail %}<p>{{ material_error_summary.health_seal.detail }}</p>{% endif %}
+    {% if material_error_summary.health_seal.product_status %}<p>{{ material_error_summary.health_seal.product_status }}</p>{% endif %}
+  </div>
+  {% endif %}
+
+  <div class="scope-panel">
+    <div class="scope-section">
+      <div class="scope-section-title">Coberto nesta execução</div>
+      {% if report_sections and report_sections.scope_caveats and report_sections.scope_caveats.covered_note %}
+      <p class="table-note">{{ report_sections.scope_caveats.covered_note }}</p>
+      {% endif %}
+      <div class="alt-rows">
+        {% for item in scope_summary.covered %}<div class="alt-row">{{ item }}</div>{% endfor %}
+      </div>
+    </div>
+    <div class="scope-section">
+      <div class="scope-section-title">Coberto parcialmente</div>
+      {% if report_sections and report_sections.scope_caveats and report_sections.scope_caveats.partial_note %}
+      <p class="table-note">{{ report_sections.scope_caveats.partial_note }}</p>
+      {% endif %}
+      <div class="alt-rows">
+        {% for item in scope_summary.partial %}<div class="alt-row">{{ item }}</div>{% endfor %}
+      </div>
+    </div>
+    <div class="scope-section">
+      <div class="scope-section-title">Não incluído nesta rodada</div>
+      {% if report_sections and report_sections.scope_caveats and report_sections.scope_caveats.excluded_note %}
+      <p class="table-note">{{ report_sections.scope_caveats.excluded_note }}</p>
+      {% endif %}
+      <div class="alt-rows">
+        {% for item in scope_summary.excluded %}<div class="alt-row">{{ item }}</div>{% endfor %}
+      </div>
+      {% if review_assurance and review_assurance.not_included_implication %}
+      <div class="scope-note">
+        <strong>{{ review_assurance.not_included_implication.headline }}</strong>
+        <p>{{ review_assurance.not_included_implication.body }}</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</section>

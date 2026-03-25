@@ -1,0 +1,26 @@
+{
+  "id": "validate_forecasts",
+  "name": "Validate Forecasts",
+  "description": "Deterministic validation: checks forecast consistency (sum of parts = annual total), model convergence, confidence interval sanity, and comparison against historical patterns.",
+  "type": "deterministic",
+  "extends": "_base_verifier",
+  "script": "steps/validate_forecasts.py",
+  "function": "main",
+  "inputs": {
+    "required": ["sarimax_results", "base_consolidada"],
+    "expects_keys": ["forecasts", "ensemble_mean", "annual_totals", "train_data"]
+  },
+  "outputs": {
+    "primary": "validation_report.json",
+    "keys": ["checks", "warnings", "passed", "failed", "verdict", "status"]
+  },
+  "compatible_executors": ["python"],
+  "cost_estimate": {"fixed_usd": 0},
+  "tags": ["validation", "consistency", "sanity-check"],
+  "library": {
+    "category": "concrete",
+    "origin": "previsao-icms-sp",
+    "domain": "financeiro",
+    "subdomain": "macro"
+  }
+}

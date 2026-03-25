@@ -1,0 +1,85 @@
+{# timeline.html.j2 -- Vertical timeline with dates and descriptions.
+   Usage: {% from "components/timeline.html.j2" import timeline %}
+          {{ timeline([{"date": "2025-01", "event": "Contract signed"}, ...]) }}
+   Each event dict: { date: str, event: str, icon: str? (optional emoji/char) }
+#}
+{% macro timeline(events) %}
+<style>
+.pe-timeline {
+  list-style: none;
+  padding: 0;
+  margin: 16px 0;
+}
+.pe-timeline-item {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 14px;
+  padding: 0 0 20px;
+  position: relative;
+}
+.pe-timeline-item::before {
+  content: "";
+  position: absolute;
+  left: 17px;
+  top: 36px;
+  bottom: -4px;
+  width: 2px;
+  background: var(--color-border, #d1d5db);
+  border-radius: 999px;
+}
+.pe-timeline-item:last-child { padding-bottom: 0; }
+.pe-timeline-item:last-child::before { display: none; }
+.pe-timeline-dot {
+  position: relative;
+  z-index: 1;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: 2px solid var(--color-border, #d1d5db);
+  background: var(--color-surface, #fff);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--color-accent, #1d4ed8);
+  flex-shrink: 0;
+}
+.pe-timeline-content {
+  min-width: 0;
+  padding-top: 6px;
+}
+.pe-timeline-date {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-muted, #6b7280);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+.pe-timeline-desc {
+  font-size: 14px;
+  color: var(--color-text, #1f2937);
+  line-height: 1.5;
+}
+@media print {
+  .pe-timeline-item { break-inside: avoid; }
+}
+</style>
+{% if events %}
+<ul class="pe-timeline">
+  {% for ev in events %}
+  <li class="pe-timeline-item">
+    <div class="pe-timeline-dot">{{ ev.icon | default('&#9679;') }}</div>
+    <div class="pe-timeline-content">
+      {% if ev.date %}<span class="pe-timeline-date">{{ ev.date }}</span>{% endif %}
+      <div class="pe-timeline-desc">{{ ev.event | default(ev.description | default('')) }}</div>
+    </div>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<p style="color: var(--color-muted); font-size: 13px;">No timeline events.</p>
+{% endif %}
+{% endmacro %}

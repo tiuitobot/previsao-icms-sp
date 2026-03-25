@@ -1,0 +1,6 @@
+{
+  "r10_plugin": "lib.r10_plugins.passthrough.PassthroughPlugin",
+  "reference_data_path": "",
+  "pipeline_type": "analysis-report",
+  "notes": "Edit this file if the project needs a stricter custom mechanical validator."
+}

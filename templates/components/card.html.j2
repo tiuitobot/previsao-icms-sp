@@ -1,0 +1,58 @@
+{# card.html.j2 -- Reusable content card with optional title badge.
+   Usage: {% from "components/card.html.j2" import card %}
+          {% call card("Section Title", badge="NEW", badge_color="blue") %}
+            <p>Card body content here.</p>
+          {% endcall %}
+#}
+{% macro card(title=None, badge=None, badge_color=None) %}
+<style>
+.pe-card {
+  background: var(--color-surface, #fff);
+  border: 1px solid var(--color-border-light, #e2e8f0);
+  border-radius: var(--radius-lg, 14px);
+  padding: 18px 20px;
+  margin-bottom: 18px;
+  box-shadow: var(--shadow-sm, 0 1px 2px rgba(15,23,42,.04));
+}
+.pe-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.pe-card-title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--color-text, #1f2937);
+}
+.pe-card-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.pe-card-badge--blue   { background: var(--color-accent-soft, #dbeafe); color: var(--color-accent, #1d4ed8); }
+.pe-card-badge--green  { background: var(--color-success-bg, #f0fdf4); color: var(--color-success, #16a34a); }
+.pe-card-badge--red    { background: var(--color-danger-bg, #fef2f2); color: var(--color-danger, #dc2626); }
+.pe-card-badge--amber  { background: var(--color-warning-bg, #fffbeb); color: var(--color-sev-media, #92400e); }
+.pe-card-badge--gray   { background: #f3f4f6; color: #6b7280; }
+</style>
+<div class="pe-card">
+  {% if title or badge %}
+  <div class="pe-card-header">
+    {% if title %}<h3 class="pe-card-title">{{ title }}</h3>{% endif %}
+    {% if badge %}
+      <span class="pe-card-badge pe-card-badge--{{ badge_color | default('blue') }}">{{ badge }}</span>
+    {% endif %}
+  </div>
+  {% endif %}
+  {{ caller() }}
+</div>
+{% endmacro %}

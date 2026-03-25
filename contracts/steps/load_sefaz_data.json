@@ -1,0 +1,23 @@
+{
+  "id": "load_sefaz_data",
+  "name": "Load SEFAZ Data",
+  "description": "Loads ICMS-SP historical data from SEFAZ Excel spreadsheet.",
+  "type": "deterministic",
+  "extends": "_base_ingester",
+  "script": "steps/load_sefaz_data.py",
+  "function": "main",
+  "inputs": {"required": ["sefaz_file"], "optional": []},
+  "outputs": {
+    "primary": "sefaz_data.json",
+    "keys": ["icms_sp_series", "last_observed_date", "n_observations", "status"]
+  },
+  "compatible_executors": ["python"],
+  "cost_estimate": {"fixed_usd": 0},
+  "tags": ["ingestion", "excel", "sefaz", "icms"],
+  "library": {
+    "category": "concrete",
+    "origin": "previsao-icms-sp",
+    "domain": "financeiro",
+    "subdomain": "macro"
+  }
+}

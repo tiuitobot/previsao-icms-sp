@@ -1,0 +1,26 @@
+{
+  "id": "generate_charts",
+  "name": "Generate Charts",
+  "description": "Creates interactive Plotly charts for dashboard (HTML) and static matplotlib/seaborn charts for academic report (PNG). Charts: historical series, model comparison, forecast fan, performance heatmap.",
+  "type": "deterministic",
+  "extends": "_base_renderer",
+  "script": "steps/generate_charts.py",
+  "function": "main",
+  "inputs": {
+    "required": ["sarimax_results", "validation_report"],
+    "expects_keys": ["forecasts", "diagnostics", "ensemble_mean", "confidence_intervals", "checks"]
+  },
+  "outputs": {
+    "primary": "charts.json",
+    "keys": ["plotly_charts", "static_charts", "chart_paths", "status"]
+  },
+  "compatible_executors": ["python"],
+  "cost_estimate": {"fixed_usd": 0},
+  "tags": ["visualization", "plotly", "matplotlib", "charts"],
+  "library": {
+    "category": "concrete",
+    "origin": "previsao-icms-sp",
+    "domain": "financeiro",
+    "subdomain": "macro"
+  }
+}

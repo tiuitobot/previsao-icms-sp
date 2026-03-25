@@ -1,0 +1,107 @@
+{
+  "name": "previsao-icms-sp-v1",
+  "version": "v1",
+  "description": "Previsão de arrecadação ICMS-SP com 5 modelos SARIMAX, dados reais de APIs (BCB, IPEA, Focus), cross-check com R original, análise qualitativa opcional, dashboard interativo + anexo acadêmico.",
+  "base_executor": "azure_openai",
+  "base_model": "gpt-4.1",
+  "data_dir": "data",
+  "cost_estimate_usd": 0.30,
+  "steps": [
+    {
+      "id": "fetch_macro_data",
+      "step": "fetch_macro_data",
+      "type": "normal",
+      "executor": "python",
+      "depends_on": [],
+      "args": {"output_dir": "{output_dir}", "data_dir": "{data_dir}"}
+    },
+    {
+      "id": "load_sefaz_data",
+      "step": "load_sefaz_data",
+      "type": "normal",
+      "executor": "python",
+      "depends_on": [],
+      "args": {"output_dir": "{output_dir}", "data_dir": "{data_dir}", "sefaz_file": "dados_sefaz.xlsx"}
+    },
+    {
+      "id": "prepare_base",
+      "step": "prepare_base",
+      "type": "normal",
+      "executor": "python",
+      "depends_on": ["fetch_macro_data", "load_sefaz_data"],
+      "args": {"output_dir": "{output_dir}"}
+    },
+    {
+      "id": "run_sarimax_models",
+      "step": "run_sarimax_models",
+      "type": "normal",
+      "executor": "python",
+      "depends_on": ["prepare_base"],
+      "args": {"output_dir": "{output_dir}"},
+      "checkpoint": true
+    },
+    {
+      "id": "cross_validate_r",
+      "step": "cross_validate_r",
+      "type": "normal",
+      "executor": "python",
+      "depends_on": ["run_sarimax_models"],
+      "args": {"output_dir": "{output_dir}", "rmd_path": "data/r_original/modelo_previsao_29_10.Rmd"},
+      "optional": true
+    },
+    {
+      "id": "validate_forecasts",
+      "step": "validate_forecasts",
+      "type": "normal",
+      "executor": "python",
+      "depends_on": ["run_sarimax_models", "prepare_base"],
+      "args": {"output_dir": "{output_dir}"}
+    },
+    {
+      "id": "qualitative_analysis",
+      "step": "qualitative_analysis",
+      "type": "normal",
+      "executor": "copilot_cli",
+      "model": "gpt-5.4",
+      "depends_on": ["validate_forecasts", "run_sarimax_models"],
+      "schema": "contracts/schemas/qualitative_analysis.schema.json",
+      "args": {"output_dir": "{output_dir}", "prompt_only": true},
+      "optional": true,
+      "non_blocking": true,
+      "thinking_level": "medium"
+    },
+    {
+      "id": "generate_charts",
+      "step": "generate_charts",
+      "type": "normal",
+      "executor": "python",
+      "depends_on": ["run_sarimax_models", "validate_forecasts"],
+      "args": {"output_dir": "{output_dir}"}
+    },
+    {
+      "id": "render_dashboard",
+      "step": "render_dashboard",
+      "type": "normal",
+      "executor": "python",
+      "depends_on": ["generate_charts", "qualitative_analysis", "run_sarimax_models"],
+      "args": {"output_dir": "{output_dir}", "template_name": "pages/dashboard_premium.html.j2"}
+    },
+    {
+      "id": "render_academic",
+      "step": "render_academic",
+      "type": "normal",
+      "executor": "python",
+      "depends_on": ["generate_charts", "qualitative_analysis", "run_sarimax_models"],
+      "args": {"output_dir": "{output_dir}", "template_name": "pages/academic_report.html.j2"}
+    },
+    {
+      "id": "regression_tracker",
+      "step": "regression_tracker",
+      "type": "normal",
+      "executor": "python",
+      "depends_on": ["render_dashboard", "render_academic"],
+      "args": {"output_dir": "{output_dir}"},
+      "non_blocking": true
+    }
+  ]
+}

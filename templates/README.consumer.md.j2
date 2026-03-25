@@ -1,0 +1,175 @@
+# {{ pipeline_name }}
+
+> {{ one_line_description }}
+
+![Pipeline Status](https://img.shields.io/badge/status-{{ status | default("active") }}-{{ status_color | default("brightgreen") }}) ![Cost per Run](https://img.shields.io/badge/cost%20per%20run-{{ cost_badge }}-blue) ![Steps](https://img.shields.io/badge/steps-{{ step_count }}-informational) ![Last Updated](https://img.shields.io/badge/updated-{{ last_updated }}-lightgrey)
+
+---
+
+## What This Pipeline Does
+
+{{ description }}
+
+## Architecture
+
+### Pipeline DAG
+
+```
+{{ ascii_dag }}
+```
+
+### Step Breakdown
+
+| # | Step | Type | Executor | Model | Est. Cost | Description |
+|---|------|------|----------|-------|-----------|-------------|
+{% for step in steps -%}
+| {{ step.number }} | **{{ step.name }}** | {{ step.type }} | `{{ step.executor }}` | {{ step.model | default("--") }} | {{ step.cost }} | {{ step.description }} |
+{% endfor %}
+
+**Total estimated cost per run:** {{ total_cost }}
+**Typical execution time:** {{ typical_duration | default("varies by data size") }}
+
+### Data Flow
+
+```
+{{ data_flow }}
+```
+
+## Quick Start
+
+### Prerequisites
+
+- Python 3.12+
+- API keys for your chosen LLM provider (see `.env.example`)
+
+### Setup
+
+```bash
+# Clone the repo
+git clone {{ repo_url | default("<repo-url>") }}
+cd {{ repo_dir | default(pipeline_name) }}
+
+# Configure environment
+cp .env.example .env
+# Fill in your API keys in .env
+
+# Install dependencies
+pip install -r requirements-runtime.txt
+```
+
+### Run
+
+```bash
+# Preview the pipeline DAG (no API calls, no cost)
+python3 -m lib.runner --pipeline pipelines/{{ version | default("v1") }}.json --dry-run
+
+# Execute the full pipeline
+python3 -m lib.runner --pipeline pipelines/{{ version | default("v1") }}.json --data-dir data/
+
+# Resume from a checkpoint or after failure
+python3 -m lib.runner --pipeline pipelines/{{ version | default("v1") }}.json --run-id <run-id> --resume
+```
+
+### Output
+
+Outputs are written to `workspace/outputs/runs/{run_id}/`:
+
+| File | Description |
+|------|-------------|
+| `manifest.json` | Run metadata (pipeline version, timestamps, config) |
+| `ledger.jsonl` | Append-only event stream for every step transition |
+| `run_state.json` | Per-step status, timing, and error details |
+| `{{ final_output | default("final_report.json") }}` | **The final deliverable** |
+
+## Pipeline Design
+
+### Why This Architecture
+
+{{ design_rationale | default("This pipeline decomposes the problem into discrete, auditable steps. Each step has a single responsibility and a clear contract defining expected inputs and outputs. Deterministic steps handle data loading and assembly, while LLM steps handle analysis and generation. Checkpoints pause execution for human review at critical junctures.") }}
+
+### Quality Controls
+
+{% if checkpoints or schema_validations or fixups -%}
+| Control | Steps | Purpose |
+|---------|-------|---------|
+{% if schema_validations -%}
+| Schema validation | {{ schema_validations }} | Ensures step outputs conform to expected structure |
+{% endif -%}
+{% if checkpoints -%}
+| Checkpoints | {{ checkpoints }} | Pauses for human review before proceeding |
+{% endif -%}
+{% if fixups -%}
+| Fixups | {{ fixups }} | Deterministic corrections applied automatically |
+{% endif -%}
+{% else -%}
+- **Schema validation:** All step outputs are validated against JSON schemas in `contracts/schemas/`
+- **Checkpoints:** {{ checkpoints | default("None configured") }}
+- **Fixups:** {{ fixups | default("None configured") }}
+{% endif %}
+
+{% if contracts -%}
+### Contracts
+
+LLM steps are guided by **contracts** — structured prompts that define exactly what the model should do, what inputs it receives, and what output schema it must follow.
+
+| Step | Contract | Model | Purpose |
+|------|----------|-------|---------|
+{% for c in contracts -%}
+| {{ c.step }} | `{{ c.contract }}` | {{ c.model | default("--") }} | {{ c.purpose }} |
+{% endfor %}
+{% endif %}
+
+## Iterating
+
+After the first run, review outputs and iterate:
+
+1. **Inspect outputs** in `workspace/outputs/runs/{run_id}/`
+2. **Edit contracts** in `contracts/{{ version | default("v1") }}/` to refine LLM behavior
+3. **Re-run** with `--resume` to skip completed deterministic steps
+4. **Log changes** in `docs/ITERATIONS.md` to maintain a decision trail
+
+<details>
+<summary>Iteration tips</summary>
+
+- Start by reviewing the final output for quality issues
+- Trace problems back to the responsible step using `ledger.jsonl`
+- Adjust the contract for that step (prompt, schema, acceptance criteria)
+- Use `--dry-run` to validate the pipeline structure before spending on API calls
+- Each iteration builds on checkpointed state — you only re-run what changed
+
+</details>
+
+## Built With
+
+- **[Pipeline Engine](https://github.com/your-org/pipeline-engine)** — DAG-based pipeline runner with executor plugins, checkpointing, and cost tracking
+- **Archetype:** `{{ archetype_name | default("custom") }}`
+{% if workers -%}
+- **Workers:** {{ workers }}
+{% endif %}
+
+## Cost Breakdown
+
+| Component | Est. Cost |
+|-----------|-----------|
+{% for row in cost_breakdown -%}
+| {{ row.component }} | {{ row.cost }} |
+{% endfor -%}
+| **Total per run** | **{{ total_cost }}** |
+
+## Project Structure
+
+```
+{{ repo_dir | default(".") }}/
+├── pipelines/          # Pipeline DAG definitions (JSON)
+├── contracts/
+│   ├── steps/          # Step definitions (inputs, outputs, executor)
+│   └── schemas/        # JSON schemas for step output validation
+├── data/               # Input data
+├── lib/                # Pipeline engine runtime
+├── workspace/outputs/  # Run outputs (gitignored)
+└── docs/               # Design decisions and iteration log
+```
+
+## License
+
+{{ license | default("See LICENSE file.") }}

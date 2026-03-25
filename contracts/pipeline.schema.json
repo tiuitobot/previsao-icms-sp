@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pipeline.schema.json",
+  "title": "Pipeline DAG Definition",
+  "description": "Declares a pipeline as a composition of canonical steps with dependencies, executor/model selection, validation gates, checkpoints, and optional map-reduce blocks.",
+  "type": "object",
+  "required": ["name", "version", "steps"],
+  "additionalProperties": false,
+  "properties": {
+    "name": { "type": "string" },
+    "version": { "type": "string" },
+    "description": { "type": "string" },
+    "base_model": { "type": "string", "description": "Default model for LLM steps." },
+    "base_executor": { "type": "string", "description": "Default executor for LLM steps." },
+    "data_dir": { "type": "string", "description": "Default input data directory." },
+    "output_pattern": { "type": "string" },
+    "cost_estimate_usd": { "type": "number" },
+    "steps": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/step_entry" }
+    }
+  },
+  "$defs": {
+    "step_entry": {
+      "type": "object",
+      "required": ["id", "step"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "step": { "type": "string", "description": "Reference to canonical step ID in contracts/steps/." },
+        "type": { "enum": ["normal", "map", "reduce"], "default": "normal" },
+        "depends_on": { "type": "array", "items": { "type": "string" } },
+        "non_blocking": { "type": "boolean", "default": false },
+        "optional": { "type": "boolean", "default": false, "description": "If true, step is skipped when its executor is not available. Downstream steps receive stub output." },
+        "checkpoint": { "type": "boolean", "default": false, "description": "If true, runner pauses after this step for human approval before continuing." },
+        "executor": { "type": "string" },
+        "model": { "type": "string" },
+        "contract": { "type": "string" },
+        "schema": { "type": "string", "description": "Output schema path for validation gate." },
+        "thinking_level": { "enum": ["low", "medium", "high"] },
+        "temperature": { "type": "number" },
+        "validation": { "$ref": "#/$defs/validation_config" },
+        "map_config": { "$ref": "#/$defs/map_config" },
+        "reduce_config": { "$ref": "#/$defs/reduce_config" },
+        "retry": {
+          "type": "object",
+          "properties": {
+            "max_attempts": { "type": "integer", "default": 1 },
+            "backoff_seconds": { "type": "integer", "default": 5 }
+          }
+        },
+        "args": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "validation_config": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Mechanical validation gate. Runs after step completion, blocks downstream on failure.",
+      "properties": {
+        "schema": { "type": "string", "description": "JSON Schema path for output validation." },
+        "plugin": { "type": "string", "description": "R10a plugin class (e.g. lib.r10_plugins.passthrough)." },
+        "reference_data": { "type": "string", "description": "Reference data path for plugin validation." },
+        "max_retries": { "type": "integer", "default": 2 }
+      }
+    },
+    "map_config": {
+      "type": "object",
+      "required": ["partition_from", "steps"],
+      "additionalProperties": false,
+      "properties": {
+        "partition_from": { "type": "string" },
+        "partition_key": { "type": "string", "default": "chunks" },
+        "steps": { "type": "array", "items": { "$ref": "#/$defs/map_sub_step" } },
+        "parallel_chunks": { "type": "boolean", "default": true },
+        "max_concurrent_chunks": { "type": "integer", "default": 4 },
+        "parallel_within_chunk": { "type": "boolean", "default": true },
+        "output_pattern": { "type": "string", "default": "chunk{chunk_index}_{step_id}.json" }
+      }
+    },
+    "map_sub_step": {
+      "type": "object",
+      "required": ["step"],
+      "additionalProperties": false,
+      "properties": {
+        "step": { "type": "string" },
+        "contract": { "type": "string" },
+        "model": { "type": "string" },
+        "executor": { "type": "string" },
+        "thinking_level": { "enum": ["low", "medium", "high"] }
+      }
+    },
+    "reduce_config": {
+      "type": "object",
+      "required": ["from"],
+      "additionalProperties": false,
+      "properties": {
+        "from": { "type": "string" },
+        "cross_references": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

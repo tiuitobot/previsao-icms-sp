@@ -1,0 +1,167 @@
+{#
+  report.html.j2 -- Full report page template.
+  Extends base layout and uses all component macros.
+  Designed to work with report_assembler worker output.
+
+  Expected context variables:
+    title:    str  -- Report title
+    date:     str  -- Generation date
+    pipeline: str  -- Pipeline name
+    summary:  str  -- Executive summary text
+    kpis:     list[{label, value, unit?, trend?}]
+    findings: list[{title, severity, description, sources?, confidence?}]
+    timeline: list[{date, event, icon?}]
+    score:    float -- Overall score
+    score_max: float (default 10)
+    table_headers: list[str]  (optional)
+    table_rows:    list[list] (optional)
+    alerts:   list[{type, message}] (optional)
+#}
+{% extends "base/layout.html.j2" %}
+
+{% from "components/kpi_row.html.j2" import kpi, kpi_row %}
+{% from "components/finding_card.html.j2" import finding %}
+{% from "components/severity_badge.html.j2" import severity %}
+{% from "components/confidence_badge.html.j2" import confidence %}
+{% from "components/data_table.html.j2" import table as render_table %}
+{% from "components/timeline.html.j2" import timeline as render_timeline %}
+{% from "components/score_gauge.html.j2" import gauge %}
+{% from "components/alert_box.html.j2" import alert %}
+{% from "components/card.html.j2" import card %}
+{% from "components/collapsible.html.j2" import collapsible %}
+
+{# ── Build sidebar sections dynamically ── #}
+{% set ns = namespace(sections=[]) %}
+{% if summary is defined and summary %}
+  {% set ns.sections = ns.sections + [{"id": "executive-summary", "label": "Executive Summary"}] %}
+{% endif %}
+{% if kpis is defined and kpis %}
+  {% set ns.sections = ns.sections + [{"id": "key-metrics", "label": "Key Metrics"}] %}
+{% endif %}
+{% if score is defined and score is not none %}
+  {% set ns.sections = ns.sections + [{"id": "overall-score", "label": "Overall Score"}] %}
+{% endif %}
+{% if findings is defined and findings %}
+  {% set ns.sections = ns.sections + [{"id": "findings", "label": "Findings"}] %}
+{% endif %}
+{% if table_headers is defined and table_headers %}
+  {% set ns.sections = ns.sections + [{"id": "data-table", "label": "Data"}] %}
+{% endif %}
+{% if timeline is defined and timeline %}
+  {% set ns.sections = ns.sections + [{"id": "timeline", "label": "Timeline"}] %}
+{% endif %}
+
+{% set sections = ns.sections %}
+
+{% block sidebar %}
+<span class="sidebar-label">Report Sections</span>
+<ul class="sidebar-nav">
+  {% for section in sections %}
+    <li><a href="#{{ section.id }}">{{ section.label }}</a></li>
+  {% endfor %}
+</ul>
+{% endblock %}
+
+{% block content %}
+
+{# ── Alerts (if any) ── #}
+{% if alerts is defined and alerts %}
+<div class="content-section">
+  {% for a in alerts %}
+    {{ alert(a.type, a.message) }}
+  {% endfor %}
+</div>
+{% endif %}
+
+{# ── Executive Summary ── #}
+{% if summary is defined and summary %}
+<section id="executive-summary" class="content-section">
+  <h2>Executive Summary</h2>
+  {% call card() %}
+    <p style="font-size: 15px; line-height: 1.7; color: var(--color-text-secondary, #334e68);">{{ summary }}</p>
+  {% endcall %}
+</section>
+{% endif %}
+
+{# ── Key Metrics (KPIs) ── #}
+{% if kpis is defined and kpis %}
+<section id="key-metrics" class="content-section">
+  <h2>Key Metrics</h2>
+  {% call kpi_row() %}
+    {% for k in kpis %}
+      {{ kpi(k.label, k.value, unit=k.unit | default(""), trend=k.trend | default(None)) }}
+    {% endfor %}
+  {% endcall %}
+</section>
+{% endif %}
+
+{# ── Overall Score ── #}
+{% if score is defined and score is not none %}
+<section id="overall-score" class="content-section">
+  <h2>Overall Score</h2>
+  {% call card() %}
+    {{ gauge(score, max=score_max | default(10), label="Score") }}
+  {% endcall %}
+</section>
+{% endif %}
+
+{# ── Findings ── #}
+{% if findings is defined and findings %}
+<section id="findings" class="content-section">
+  <h2>Findings</h2>
+  {# Summary badges #}
+  <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 18px;">
+    {% set alta_count  = findings | selectattr('severity', 'equalto', 'alta') | list | length %}
+    {% set media_count = findings | selectattr('severity', 'equalto', 'media') | list | length %}
+    {% set baixa_count = findings | selectattr('severity', 'equalto', 'baixa') | list | length %}
+    {% if alta_count %}
+      <span style="font-size: 13px; font-weight: 700;">{{ severity("alta") }} <span style="margin-left: 4px; color: var(--color-muted);">{{ alta_count }}</span></span>
+    {% endif %}
+    {% if media_count %}
+      <span style="font-size: 13px; font-weight: 700;">{{ severity("media") }} <span style="margin-left: 4px; color: var(--color-muted);">{{ media_count }}</span></span>
+    {% endif %}
+    {% if baixa_count %}
+      <span style="font-size: 13px; font-weight: 700;">{{ severity("baixa") }} <span style="margin-left: 4px; color: var(--color-muted);">{{ baixa_count }}</span></span>
+    {% endif %}
+  </div>
+  {% for f in findings %}
+    {{ finding(
+        f.title,
+        f.severity,
+        f.description,
+        sources=f.sources | default([]),
+        confidence=f.confidence | default(None)
+    ) }}
+  {% endfor %}
+</section>
+{% endif %}
+
+{# ── Data Table ── #}
+{% if table_headers is defined and table_headers %}
+<section id="data-table" class="content-section">
+  <h2>Data</h2>
+  {{ render_table(table_headers, table_rows | default([])) }}
+</section>
+{% endif %}
+
+{# ── Timeline ── #}
+{% if timeline is defined and timeline %}
+<section id="timeline" class="content-section">
+  <h2>Timeline</h2>
+  {% call card() %}
+    {{ render_timeline(timeline) }}
+  {% endcall %}
+</section>
+{% endif %}
+
+{% endblock %}
+
+{% block footer %}
+<div>
+  Generated {{ date | default('--', true) }}
+  {% if pipeline is defined and pipeline %} | Pipeline: {{ pipeline }}{% endif %}
+</div>
+<div style="font-size: 11px; color: var(--color-muted);">
+  Pipeline Engine Report System
+</div>
+{% endblock %}

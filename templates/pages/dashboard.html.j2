@@ -1,0 +1,99 @@
+{#
+  dashboard.html.j2 -- Dashboard page template.
+  Extends base layout. Shows KPIs, alerts, summary table.
+
+  Expected context variables:
+    title:    str
+    date:     str
+    pipeline: str
+    kpis:     list[{label, value, unit?, trend?}]
+    alerts:   list[{type, message}]  (optional)
+    table_headers: list[str]
+    table_rows:    list[list]
+    summary:  str (optional)
+#}
+{% extends "base/layout.html.j2" %}
+
+{% from "components/kpi_row.html.j2" import kpi, kpi_row %}
+{% from "components/alert_box.html.j2" import alert %}
+{% from "components/data_table.html.j2" import table as render_table %}
+{% from "components/card.html.j2" import card %}
+{% from "components/score_gauge.html.j2" import gauge %}
+
+{# ── Dynamic sidebar ── #}
+{% set ns = namespace(sections=[]) %}
+{% if kpis is defined and kpis %}
+  {% set ns.sections = ns.sections + [{"id": "dashboard-kpis", "label": "Key Metrics"}] %}
+{% endif %}
+{% if alerts is defined and alerts %}
+  {% set ns.sections = ns.sections + [{"id": "dashboard-alerts", "label": "Alerts"}] %}
+{% endif %}
+{% if score is defined and score is not none %}
+  {% set ns.sections = ns.sections + [{"id": "dashboard-score", "label": "Score"}] %}
+{% endif %}
+{% if table_headers is defined and table_headers %}
+  {% set ns.sections = ns.sections + [{"id": "dashboard-table", "label": "Summary Table"}] %}
+{% endif %}
+{% set sections = ns.sections %}
+
+{% block sidebar %}
+<span class="sidebar-label">Dashboard</span>
+<ul class="sidebar-nav">
+  {% for section in sections %}
+    <li><a href="#{{ section.id }}">{{ section.label }}</a></li>
+  {% endfor %}
+</ul>
+{% endblock %}
+
+{% block content %}
+
+{# ── KPIs ── #}
+{% if kpis is defined and kpis %}
+<section id="dashboard-kpis" class="content-section">
+  <h2>Key Metrics</h2>
+  {% call kpi_row() %}
+    {% for k in kpis %}
+      {{ kpi(k.label, k.value, unit=k.unit | default(""), trend=k.trend | default(None)) }}
+    {% endfor %}
+  {% endcall %}
+</section>
+{% endif %}
+
+{# ── Alerts ── #}
+{% if alerts is defined and alerts %}
+<section id="dashboard-alerts" class="content-section">
+  <h2>Alerts</h2>
+  {% for a in alerts %}
+    {{ alert(a.type, a.message) }}
+  {% endfor %}
+</section>
+{% endif %}
+
+{# ── Score ── #}
+{% if score is defined and score is not none %}
+<section id="dashboard-score" class="content-section">
+  <h2>Score</h2>
+  {% call card() %}
+    {{ gauge(score, max=score_max | default(10), label="Overall") }}
+  {% endcall %}
+</section>
+{% endif %}
+
+{# ── Summary Table ── #}
+{% if table_headers is defined and table_headers %}
+<section id="dashboard-table" class="content-section">
+  <h2>Summary</h2>
+  {{ render_table(table_headers, table_rows | default([])) }}
+</section>
+{% endif %}
+
+{# ── Summary text ── #}
+{% if summary is defined and summary %}
+<section class="content-section">
+  {% call card("Summary") %}
+    <p style="color: var(--color-text-secondary);">{{ summary }}</p>
+  {% endcall %}
+</section>
+{% endif %}
+
+{% endblock %}

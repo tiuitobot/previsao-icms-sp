@@ -1,0 +1,65 @@
+{# collapsible.html.j2 -- Expandable/collapsible section using <details>.
+   Usage: {% from "components/collapsible.html.j2" import collapsible %}
+          {% call collapsible("Show Details", open=true) %}
+            <p>Hidden content here.</p>
+          {% endcall %}
+#}
+{% macro collapsible(title, open=false) %}
+<style>
+.pe-collapsible {
+  border-radius: var(--radius-lg, 14px);
+  border: 1px solid var(--color-border-light, #dbe5f0);
+  background: linear-gradient(180deg, var(--color-surface, #fff) 0%, var(--color-surface-alt, #f8fafc) 100%);
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+.pe-collapsible summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 18px;
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--color-text, #102a43);
+  user-select: none;
+  transition: background 0.12s ease;
+}
+.pe-collapsible summary:hover {
+  background: var(--color-surface-alt, #f8fafc);
+}
+.pe-collapsible summary::-webkit-details-marker { display: none; }
+.pe-collapsible summary::marker { display: none; content: ''; }
+.pe-collapsible-chevron {
+  color: var(--color-accent, #1d4ed8);
+  font-size: 20px;
+  line-height: 1;
+  font-weight: 800;
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+.pe-collapsible[open] .pe-collapsible-chevron {
+  transform: rotate(180deg);
+}
+.pe-collapsible[open] summary {
+  border-bottom: 1px solid var(--color-border-light, #e2e8f0);
+}
+.pe-collapsible-body {
+  padding: 16px 18px;
+}
+@media print {
+  .pe-collapsible { break-inside: avoid; }
+  .pe-collapsible-body { display: block !important; }
+}
+</style>
+<details class="pe-collapsible"{% if open %} open{% endif %}>
+  <summary>
+    <span>{{ title }}</span>
+    <span class="pe-collapsible-chevron">&#9660;</span>
+  </summary>
+  <div class="pe-collapsible-body">
+    {{ caller() }}
+  </div>
+</details>
+{% endmacro %}

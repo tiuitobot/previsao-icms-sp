@@ -1,0 +1,91 @@
+{# data_table.html.j2 -- Responsive data table with optional sort indicators.
+   Usage: {% from "components/data_table.html.j2" import table %}
+          {{ table(["Name", "Score", "Status"], [["Alice", 9, "OK"], ["Bob", 7, "Warn"]]) }}
+#}
+{% macro table(headers, rows, sortable=false, caption=None) %}
+<style>
+.pe-table-wrap {
+  border: 1px solid var(--color-border-light, #e2e8f0);
+  border-radius: var(--radius-md, 10px);
+  overflow: auto;
+  background: var(--color-surface, #fff);
+  margin-bottom: 18px;
+}
+.pe-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.pe-table caption {
+  text-align: left;
+  padding: 12px 14px;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--color-text, #1f2937);
+  border-bottom: 1px solid var(--color-border-light, #e2e8f0);
+}
+.pe-table th {
+  background: #f1f5f9;
+  text-align: left;
+  padding: 10px 14px;
+  border-bottom: 2px solid var(--color-border-light, #e2e8f0);
+  font-weight: 700;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #475569;
+  white-space: nowrap;
+}
+.pe-table th.pe-sortable {
+  cursor: pointer;
+  user-select: none;
+}
+.pe-table th.pe-sortable::after {
+  content: ' \25B4\25BE';
+  font-size: 10px;
+  color: #94a3b8;
+}
+.pe-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: top;
+}
+.pe-table tr:nth-child(even) td { background: var(--color-surface-alt, #f8fafc); }
+.pe-table tr:hover td { background: #f1f5f9; }
+.pe-table--empty {
+  text-align: center;
+  padding: 24px;
+  color: var(--color-muted, #6b7280);
+  font-size: 13px;
+}
+@media print {
+  .pe-table-wrap { border-radius: 0; box-shadow: none; }
+  .pe-table tr:hover td { background: inherit; }
+}
+</style>
+<div class="pe-table-wrap">
+  <table class="pe-table">
+    {% if caption %}<caption>{{ caption }}</caption>{% endif %}
+    <thead>
+      <tr>
+        {% for h in headers %}
+          <th{% if sortable %} class="pe-sortable"{% endif %}>{{ h }}</th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% if rows %}
+        {% for row in rows %}
+          <tr>
+            {% for cell in row %}
+              <td>{{ cell }}</td>
+            {% endfor %}
+          </tr>
+        {% endfor %}
+      {% else %}
+        <tr><td colspan="{{ headers | length }}" class="pe-table--empty">No data available</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+{% endmacro %}

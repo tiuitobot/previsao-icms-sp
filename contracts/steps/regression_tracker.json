@@ -1,0 +1,13 @@
+{
+  "id": "regression_tracker",
+  "name": "Regression Tracker",
+  "description": "Compares current run outputs against previous runs to detect forecast regressions.",
+  "type": "deterministic",
+  "script": "steps/regression_tracker.py",
+  "function": "main",
+  "inputs": {"required": ["sarimax_results"]},
+  "outputs": {"primary": "regression_tracker.json", "keys": ["comparisons", "verdict", "status"]},
+  "compatible_executors": ["python"],
+  "cost_estimate": {"fixed_usd": 0},
+  "tags": ["validation", "regression", "comparison"]
+}

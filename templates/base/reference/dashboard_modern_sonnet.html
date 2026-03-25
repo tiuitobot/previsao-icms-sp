@@ -1,0 +1,1921 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Contrato de Coberturas Médicas Adicionais (PCA, Unifly, APH)</title>
+<!-- Inter font from Google Fonts CDN (fallback to system fonts if offline) -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ── Theme tokens (inlined for self-containment) ── */
+/* theme.css -- Design tokens for pipeline-engine report templates.
+   Extracted from analise-autos and revisao-tecnica production visual systems.
+   All values expressed as CSS custom properties for easy theming. */
+
+:root {
+  /* ── Primary palette ── */
+  --color-primary:       #1a365d;
+  --color-primary-light: #2c5282;
+  --color-primary-bg:    #eef3f8;
+  --color-accent:        #1d4ed8;
+  --color-accent-soft:   #dbeafe;
+
+  /* ── Neutral palette ── */
+  --color-bg:            #f7fafc;
+  --color-surface:       #ffffff;
+  --color-surface-alt:   #f8fafc;
+  --color-border:        #d9e2ec;
+  --color-border-light:  #e2e8f0;
+  --color-text:          #1f2937;
+  --color-text-secondary:#334e68;
+  --color-muted:         #6b7280;
+
+  /* ── Severity colors ── */
+  --color-sev-alta:      #991b1b;
+  --color-sev-alta-bg:   #fee2e2;
+  --color-sev-alta-border:#fca5a5;
+  --color-sev-media:     #92400e;
+  --color-sev-media-bg:  #fef3c7;
+  --color-sev-media-border:#fde68a;
+  --color-sev-baixa:     #1d4ed8;
+  --color-sev-baixa-bg:  #dbeafe;
+  --color-sev-baixa-border:#93c5fd;
+
+  /* ── Confidence colors ── */
+  --color-conf-blindado:       #065f46;
+  --color-conf-blindado-bg:    #d1fae5;
+  --color-conf-blindado-border:#6ee7b7;
+  --color-conf-alta:           #92400e;
+  --color-conf-alta-bg:        #fef3c7;
+  --color-conf-alta-border:    #fcd34d;
+  --color-conf-sugestao:       #1d4ed8;
+  --color-conf-sugestao-bg:    #dbeafe;
+  --color-conf-sugestao-border:#93c5fd;
+
+  /* ── Alert / status colors ── */
+  --color-danger:        #dc2626;
+  --color-danger-bg:     #fef2f2;
+  --color-warning:       #f59e0b;
+  --color-warning-bg:    #fffbeb;
+  --color-success:       #16a34a;
+  --color-success-bg:    #f0fdf4;
+  --color-info:          #2563eb;
+  --color-info-bg:       #eff6ff;
+
+  /* ── Typography ── */
+  --font-family:         'Inter', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+  --font-family-serif:   'Georgia', 'Times New Roman', serif;
+  --font-mono:           'SF Mono', 'Cascadia Code', 'Fira Code', Consolas, monospace;
+  --font-size-xs:        0.6875rem;  /* 11px */
+  --font-size-sm:        0.8125rem;  /* 13px */
+  --font-size-base:      0.875rem;   /* 14px */
+  --font-size-md:        1rem;       /* 16px */
+  --font-size-lg:        1.25rem;    /* 20px */
+  --font-size-xl:        1.5rem;     /* 24px */
+  --font-size-2xl:       2rem;       /* 32px */
+  --font-size-3xl:       2.5rem;     /* 40px */
+  --line-height:         1.6;
+  --line-height-tight:   1.25;
+
+  /* ── Spacing scale (4px base) ── */
+  --sp-1:  4px;
+  --sp-2:  8px;
+  --sp-3:  12px;
+  --sp-4:  16px;
+  --sp-5:  20px;
+  --sp-6:  24px;
+  --sp-8:  32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+
+  /* ── Border radius ── */
+  --radius-sm:   6px;
+  --radius-md:   10px;
+  --radius-lg:   14px;
+  --radius-xl:   18px;
+  --radius-pill:  999px;
+
+  /* ── Shadows ── */
+  --shadow-sm:   0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-md:   0 4px 12px rgba(15, 23, 42, 0.06);
+  --shadow-lg:   0 10px 28px rgba(15, 23, 42, 0.08);
+  --shadow-xl:   0 20px 48px rgba(15, 23, 42, 0.08);
+
+  /* ── Layout ── */
+  --sidebar-width: 240px;
+  --content-max:   1100px;
+}
+
+/* ── Dark mode ── */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-primary:       #93c5fd;
+    --color-primary-light: #60a5fa;
+    --color-primary-bg:    #1e293b;
+    --color-accent:        #60a5fa;
+    --color-accent-soft:   #1e3a5f;
+
+    --color-bg:            #0f172a;
+    --color-surface:       #1e293b;
+    --color-surface-alt:   #1a2332;
+    --color-border:        #334155;
+    --color-border-light:  #475569;
+    --color-text:          #e2e8f0;
+    --color-text-secondary:#94a3b8;
+    --color-muted:         #64748b;
+
+    --color-sev-alta:        #fca5a5;
+    --color-sev-alta-bg:     #450a0a;
+    --color-sev-alta-border: #7f1d1d;
+    --color-sev-media:       #fde68a;
+    --color-sev-media-bg:    #451a03;
+    --color-sev-media-border:#78350f;
+    --color-sev-baixa:       #93c5fd;
+    --color-sev-baixa-bg:    #172554;
+    --color-sev-baixa-border:#1e40af;
+
+    --color-conf-blindado:       #6ee7b7;
+    --color-conf-blindado-bg:    #052e16;
+    --color-conf-blindado-border:#065f46;
+    --color-conf-alta:           #fde68a;
+    --color-conf-alta-bg:        #451a03;
+    --color-conf-alta-border:    #78350f;
+    --color-conf-sugestao:       #93c5fd;
+    --color-conf-sugestao-bg:    #172554;
+    --color-conf-sugestao-border:#1e40af;
+
+    --color-danger:        #f87171;
+    --color-danger-bg:     #450a0a;
+    --color-warning:       #fbbf24;
+    --color-warning-bg:    #451a03;
+    --color-success:       #4ade80;
+    --color-success-bg:    #052e16;
+    --color-info:          #60a5fa;
+    --color-info-bg:       #172554;
+
+    --shadow-sm:   0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md:   0 4px 12px rgba(0, 0, 0, 0.4);
+    --shadow-lg:   0 10px 28px rgba(0, 0, 0, 0.5);
+    --shadow-xl:   0 20px 48px rgba(0, 0, 0, 0.5);
+  }
+}
+
+/* ── Page setup for PDF ── */
+@page {
+  size: A4;
+  margin: 2cm 1.8cm;
+  @bottom-center { content: counter(page); font-size: 9pt; color: var(--color-muted); }
+}
+
+/* ── Base reset & typography ── */
+*, *::before, *::after { box-sizing: border-box; }
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height);
+  color: var(--color-text);
+  background: var(--color-bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+h1, h2, h3, h4, h5, h6, p { margin-top: 0; }
+h1 { font-size: var(--font-size-2xl); color: var(--color-primary); line-height: var(--line-height-tight); margin-bottom: var(--sp-3); }
+h2 { font-size: var(--font-size-xl);  color: var(--color-primary); margin-bottom: var(--sp-4); }
+h3 { font-size: var(--font-size-lg);  color: var(--color-primary-light); margin-bottom: var(--sp-3); }
+h4 { font-size: var(--font-size-md);  color: var(--color-text); margin-bottom: var(--sp-2); }
+a { color: var(--color-accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ── Layout shell ── */
+.layout-wrapper {
+  display: grid;
+  grid-template-columns: var(--sidebar-width) 1fr;
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas:
+    "header  header"
+    "sidebar content"
+    "footer  footer";
+  min-height: 100vh;
+  max-width: calc(var(--content-max) + var(--sidebar-width) + var(--sp-12));
+  margin: 0 auto;
+}
+
+/* ── Header ── */
+.layout-header {
+  grid-area: header;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+  padding: var(--sp-6) var(--sp-8);
+  background: linear-gradient(180deg, var(--color-surface) 0%, var(--color-surface-alt) 100%);
+  border-bottom: 1px solid var(--color-border);
+  box-shadow: var(--shadow-sm);
+}
+.header-title-group { flex: 1 1 auto; min-width: 0; }
+.header-title-group h1 { margin-bottom: var(--sp-1); }
+.header-meta {
+  display: flex;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  align-items: center;
+}
+.header-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--radius-pill);
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+/* ── Sidebar navigation ── */
+.layout-sidebar {
+  grid-area: sidebar;
+  padding: var(--sp-6) var(--sp-5);
+  background: var(--color-surface);
+  border-right: 1px solid var(--color-border);
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+.sidebar-nav { list-style: none; padding: 0; margin: 0; }
+.sidebar-nav li { margin-bottom: var(--sp-1); }
+.sidebar-nav a {
+  display: block;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  transition: background 0.15s ease, color 0.15s ease;
+  text-decoration: none;
+}
+.sidebar-nav a:hover {
+  background: var(--color-primary-bg);
+  color: var(--color-primary);
+  text-decoration: none;
+}
+.sidebar-label {
+  display: block;
+  padding: var(--sp-3) var(--sp-3) var(--sp-2);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-muted);
+}
+
+/* ── Main content ── */
+.layout-content {
+  grid-area: content;
+  padding: var(--sp-8);
+  min-width: 0;
+}
+
+/* ── Footer ── */
+.layout-footer {
+  grid-area: footer;
+  padding: var(--sp-5) var(--sp-8);
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
+  font-size: var(--font-size-xs);
+  color: var(--color-muted);
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+}
+.footer-version {
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--color-border-light);
+}
+
+/* ── Section spacing ── */
+.content-section {
+  margin-bottom: var(--sp-10);
+}
+.content-section:last-child {
+  margin-bottom: 0;
+}
+
+/* ── Mobile responsive ── */
+@media (max-width: 900px) {
+  .layout-wrapper {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "header"
+      "content"
+      "footer";
+  }
+  .layout-sidebar {
+    display: none;
+  }
+  .layout-header {
+    padding: var(--sp-4) var(--sp-5);
+  }
+  .layout-content {
+    padding: var(--sp-5);
+  }
+  h1 { font-size: var(--font-size-xl); }
+}
+
+/* ── Print styles ── */
+@media print {
+  body { background: white; }
+  .layout-wrapper {
+    display: block;
+    max-width: 100%;
+  }
+  .layout-sidebar { display: none; }
+  .layout-header {
+    box-shadow: none;
+    border-bottom: 2px solid var(--color-primary);
+    background: white;
+  }
+  .layout-content { padding: var(--sp-5) 0; }
+  .layout-footer {
+    border-top: 1px solid var(--color-border);
+    background: white;
+  }
+  .content-section { break-inside: avoid; }
+  table { break-inside: avoid; }
+  .pe-card { break-inside: avoid; }
+  .pe-finding { break-inside: avoid; }
+  .pe-kpi-row { break-inside: avoid; }
+  .pe-alert { break-inside: avoid; }
+  h2, h3 { break-after: avoid; }
+  a { color: var(--color-text); }
+  a::after { content: none; }
+}
+</style>
+
+</head>
+<body>
+<div class="layout-wrapper">
+
+  
+  <header class="layout-header">
+    <div class="header-title-group">
+      <h1>Contrato de Coberturas Médicas Adicionais (PCA, Unifly, APH)</h1>
+      <div class="header-meta">
+        
+          <span class="header-chip">contract-analyzer-v1</span>
+        
+        
+          <span class="header-chip">2026-03-24</span>
+        
+        
+      </div>
+    </div>
+    
+  </header>
+
+  
+  <nav class="layout-sidebar" aria-label="Section navigation">
+    
+<span class="sidebar-label">Report Sections</span>
+<ul class="sidebar-nav">
+  
+    <li><a href="#executive-summary">Executive Summary</a></li>
+  
+    <li><a href="#key-metrics">Key Metrics</a></li>
+  
+    <li><a href="#overall-score">Overall Score</a></li>
+  
+    <li><a href="#findings">Findings</a></li>
+  
+    <li><a href="#data-table">Data</a></li>
+  
+</ul>
+
+  </nav>
+
+  
+  <main class="layout-content">
+    
+
+
+
+<div class="content-section">
+  
+    <style>
+.pe-alert {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 18px;
+  border-radius: var(--radius-lg, 14px);
+  margin-bottom: 16px;
+  font-size: 14px;
+  line-height: 1.5;
+  border: 1px solid transparent;
+}
+.pe-alert-icon {
+  font-size: 18px;
+  line-height: 1.2;
+  flex-shrink: 0;
+}
+.pe-alert-body { flex: 1 1 auto; min-width: 0; }
+.pe-alert-label {
+  font-weight: 800;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 2px;
+}
+.pe-alert--info {
+  background: var(--color-info-bg, #eff6ff);
+  border-color: #b6daf7;
+  color: #1e40af;
+}
+.pe-alert--warning {
+  background: var(--color-warning-bg, #fffbeb);
+  border-color: #fde68a;
+  color: var(--color-sev-media, #92400e);
+}
+.pe-alert--danger {
+  background: var(--color-danger-bg, #fef2f2);
+  border-color: var(--color-sev-alta-border, #fca5a5);
+  color: var(--color-sev-alta, #991b1b);
+}
+.pe-alert--success {
+  background: var(--color-success-bg, #f0fdf4);
+  border-color: #bbf7d0;
+  color: #166534;
+}
+@media print {
+  .pe-alert { break-inside: avoid; }
+}
+</style>
+<div class="pe-alert pe-alert--warning">
+  <span class="pe-alert-icon">&#9888;</span>
+  <div class="pe-alert-body">
+    <div class="pe-alert-label">Warning</div>
+    <div>Cláusula de rescisão por justa causa (termination_cause)</div>
+  </div>
+</div>
+
+  
+    <style>
+.pe-alert {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 18px;
+  border-radius: var(--radius-lg, 14px);
+  margin-bottom: 16px;
+  font-size: 14px;
+  line-height: 1.5;
+  border: 1px solid transparent;
+}
+.pe-alert-icon {
+  font-size: 18px;
+  line-height: 1.2;
+  flex-shrink: 0;
+}
+.pe-alert-body { flex: 1 1 auto; min-width: 0; }
+.pe-alert-label {
+  font-weight: 800;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 2px;
+}
+.pe-alert--info {
+  background: var(--color-info-bg, #eff6ff);
+  border-color: #b6daf7;
+  color: #1e40af;
+}
+.pe-alert--warning {
+  background: var(--color-warning-bg, #fffbeb);
+  border-color: #fde68a;
+  color: var(--color-sev-media, #92400e);
+}
+.pe-alert--danger {
+  background: var(--color-danger-bg, #fef2f2);
+  border-color: var(--color-sev-alta-border, #fca5a5);
+  color: var(--color-sev-alta, #991b1b);
+}
+.pe-alert--success {
+  background: var(--color-success-bg, #f0fdf4);
+  border-color: #bbf7d0;
+  color: #166534;
+}
+@media print {
+  .pe-alert { break-inside: avoid; }
+}
+</style>
+<div class="pe-alert pe-alert--warning">
+  <span class="pe-alert-icon">&#9888;</span>
+  <div class="pe-alert-body">
+    <div class="pe-alert-label">Warning</div>
+    <div>Cláusula de eleição de foro e lei aplicável (governing_law)</div>
+  </div>
+</div>
+
+  
+</div>
+
+
+
+
+<section id="executive-summary" class="content-section">
+  <h2>Executive Summary</h2>
+  
+<style>
+.pe-card {
+  background: var(--color-surface, #fff);
+  border: 1px solid var(--color-border-light, #e2e8f0);
+  border-radius: var(--radius-lg, 14px);
+  padding: 18px 20px;
+  margin-bottom: 18px;
+  box-shadow: var(--shadow-sm, 0 1px 2px rgba(15,23,42,.04));
+}
+.pe-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.pe-card-title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--color-text, #1f2937);
+}
+.pe-card-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.pe-card-badge--blue   { background: var(--color-accent-soft, #dbeafe); color: var(--color-accent, #1d4ed8); }
+.pe-card-badge--green  { background: var(--color-success-bg, #f0fdf4); color: var(--color-success, #16a34a); }
+.pe-card-badge--red    { background: var(--color-danger-bg, #fef2f2); color: var(--color-danger, #dc2626); }
+.pe-card-badge--amber  { background: var(--color-warning-bg, #fffbeb); color: var(--color-sev-media, #92400e); }
+.pe-card-badge--gray   { background: #f3f4f6; color: #6b7280; }
+</style>
+<div class="pe-card">
+  
+  
+    <p style="font-size: 15px; line-height: 1.7; color: var(--color-text-secondary, #334e68);">Contrato: Contrato de Coberturas Médicas Adicionais (PCA, Unifly, APH). Objeto: Prestação gratuita de serviços de Plano de Continuidade Assistencial (PCA), Transporte Aeromédico Inter-Hospitalar (Unifly) e Atendimento Pré-Hospitalar (APH). Valor: A título gratuito (sujeito a tabelas etárias de referência).</p>
+  
+</div>
+
+</section>
+
+
+
+
+<section id="key-metrics" class="content-section">
+  <h2>Key Metrics</h2>
+  
+<style>
+.pe-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+  margin-bottom: 24px;
+  align-items: stretch;
+}
+.pe-kpi {
+  background: var(--color-surface, #fff);
+  border: 1px solid var(--color-border, #d9e2ec);
+  border-radius: var(--radius-lg, 14px);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  min-height: 100px;
+}
+.pe-kpi-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-muted, #6b7280);
+  margin-bottom: 8px;
+}
+.pe-kpi-value-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.pe-kpi-value {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--color-primary, #1a365d);
+  line-height: 1;
+}
+.pe-kpi-unit {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-muted, #6b7280);
+}
+.pe-kpi-trend {
+  margin-top: auto;
+  padding-top: 8px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.pe-kpi-trend--up   { color: var(--color-success, #16a34a); }
+.pe-kpi-trend--down { color: var(--color-danger, #dc2626); }
+.pe-kpi-trend--flat { color: var(--color-muted, #6b7280); }
+</style>
+<div class="pe-kpi-row">
+  
+    
+      
+<div class="pe-kpi">
+  <span class="pe-kpi-label">Risco Global</span>
+  <div class="pe-kpi-value-row">
+    <span class="pe-kpi-value">Alto</span>
+    
+  </div>
+  
+</div>
+
+    
+      
+<div class="pe-kpi">
+  <span class="pe-kpi-label">Riscos Críticos/Altos</span>
+  <div class="pe-kpi-value-row">
+    <span class="pe-kpi-value">5</span>
+    
+  </div>
+  
+</div>
+
+    
+      
+<div class="pe-kpi">
+  <span class="pe-kpi-label">Páginas Analisadas</span>
+  <div class="pe-kpi-value-row">
+    <span class="pe-kpi-value">49</span>
+    <span class="pe-kpi-unit">págs</span>
+  </div>
+  
+</div>
+
+    
+      
+<div class="pe-kpi">
+  <span class="pe-kpi-label">Duração</span>
+  <div class="pe-kpi-value-row">
+    <span class="pe-kpi-value">Vigência simultânea ao Contrato de Plano de Saúde - Adesão Máster</span>
+    
+  </div>
+  
+</div>
+
+    
+  
+</div>
+
+</section>
+
+
+
+
+<section id="overall-score" class="content-section">
+  <h2>Overall Score</h2>
+  
+<style>
+.pe-card {
+  background: var(--color-surface, #fff);
+  border: 1px solid var(--color-border-light, #e2e8f0);
+  border-radius: var(--radius-lg, 14px);
+  padding: 18px 20px;
+  margin-bottom: 18px;
+  box-shadow: var(--shadow-sm, 0 1px 2px rgba(15,23,42,.04));
+}
+.pe-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.pe-card-title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--color-text, #1f2937);
+}
+.pe-card-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.pe-card-badge--blue   { background: var(--color-accent-soft, #dbeafe); color: var(--color-accent, #1d4ed8); }
+.pe-card-badge--green  { background: var(--color-success-bg, #f0fdf4); color: var(--color-success, #16a34a); }
+.pe-card-badge--red    { background: var(--color-danger-bg, #fef2f2); color: var(--color-danger, #dc2626); }
+.pe-card-badge--amber  { background: var(--color-warning-bg, #fffbeb); color: var(--color-sev-media, #92400e); }
+.pe-card-badge--gray   { background: #f3f4f6; color: #6b7280; }
+</style>
+<div class="pe-card">
+  
+  
+    <style>
+.pe-gauge {
+  margin-bottom: 18px;
+}
+.pe-gauge-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+.pe-gauge-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text, #1f2937);
+}
+.pe-gauge-value {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--color-primary, #1a365d);
+}
+.pe-gauge-value small {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-muted, #6b7280);
+}
+.pe-gauge-track {
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--color-border-light, #e2e8f0);
+  overflow: hidden;
+}
+.pe-gauge-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+.pe-gauge-ticks {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--color-muted, #6b7280);
+}
+</style>
+<div class="pe-gauge">
+  <div class="pe-gauge-header">
+    <span class="pe-gauge-label">Score</span>
+    <span class="pe-gauge-value">5.5<small>/10</small></span>
+  </div>
+  <div class="pe-gauge-track">
+    <div class="pe-gauge-fill" style="width: 55.0%; background: var(--color-warning, #f59e0b);"></div>
+  </div>
+  <div class="pe-gauge-ticks">
+    <span>0</span>
+    <span>5.0</span>
+    <span>10</span>
+  </div>
+</div>
+
+  
+</div>
+
+</section>
+
+
+
+
+<section id="findings" class="content-section">
+  <h2>Findings</h2>
+  
+  <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 18px;">
+    
+    
+    
+    
+      <span style="font-size: 13px; font-weight: 700;"><style>
+.pe-severity {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.pe-severity--alta   { background: var(--color-sev-alta-bg, #fee2e2); color: var(--color-sev-alta, #991b1b); border-color: var(--color-sev-alta-border, #fca5a5); }
+.pe-severity--media  { background: var(--color-sev-media-bg, #fef3c7); color: var(--color-sev-media, #92400e); border-color: var(--color-sev-media-border, #fde68a); }
+.pe-severity--baixa  { background: var(--color-sev-baixa-bg, #dbeafe); color: var(--color-sev-baixa, #1d4ed8); border-color: var(--color-sev-baixa-border, #93c5fd); }
+</style>
+<span class="pe-severity pe-severity--alta">alta</span> <span style="margin-left: 4px; color: var(--color-muted);">5</span></span>
+    
+    
+      <span style="font-size: 13px; font-weight: 700;"><style>
+.pe-severity {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.pe-severity--alta   { background: var(--color-sev-alta-bg, #fee2e2); color: var(--color-sev-alta, #991b1b); border-color: var(--color-sev-alta-border, #fca5a5); }
+.pe-severity--media  { background: var(--color-sev-media-bg, #fef3c7); color: var(--color-sev-media, #92400e); border-color: var(--color-sev-media-border, #fde68a); }
+.pe-severity--baixa  { background: var(--color-sev-baixa-bg, #dbeafe); color: var(--color-sev-baixa, #1d4ed8); border-color: var(--color-sev-baixa-border, #93c5fd); }
+</style>
+<span class="pe-severity pe-severity--media">media</span> <span style="margin-left: 4px; color: var(--color-muted);">4</span></span>
+    
+    
+  </div>
+  
+    <style>
+.pe-finding {
+  border: 1px solid var(--color-border-light, #e2e8f0);
+  border-left: 4px solid var(--color-accent, #1d4ed8);
+  border-radius: var(--radius-md, 10px);
+  padding: 16px 18px;
+  margin-bottom: 16px;
+  background: var(--color-surface, #fff);
+  box-shadow: var(--shadow-sm, 0 1px 2px rgba(15,23,42,.04));
+  break-inside: avoid;
+}
+.pe-finding-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.pe-finding-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--color-text, #1f2937);
+  flex: 1 1 auto;
+}
+.pe-finding-badges {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+.pe-finding-desc {
+  font-size: 14px;
+  color: var(--color-text-secondary, #334e68);
+  line-height: 1.65;
+  margin-bottom: 10px;
+}
+.pe-finding-sources {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.pe-finding-source {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid #e2e8f0;
+}
+/* Severity badge (inline) */
+.pe-finding .pe-sev-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.pe-sev-badge--alta   { background: var(--color-sev-alta-bg, #fee2e2); color: var(--color-sev-alta, #991b1b); border-color: var(--color-sev-alta-border, #fca5a5); }
+.pe-sev-badge--media  { background: var(--color-sev-media-bg, #fef3c7); color: var(--color-sev-media, #92400e); border-color: var(--color-sev-media-border, #fde68a); }
+.pe-sev-badge--baixa  { background: var(--color-sev-baixa-bg, #dbeafe); color: var(--color-sev-baixa, #1d4ed8); border-color: var(--color-sev-baixa-border, #93c5fd); }
+/* Confidence badge (inline) */
+.pe-finding .pe-conf-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+}
+.pe-conf-badge--blindado { background: var(--color-conf-blindado-bg, #d1fae5); color: var(--color-conf-blindado, #065f46); border-color: var(--color-conf-blindado-border, #6ee7b7); }
+.pe-conf-badge--alta     { background: var(--color-conf-alta-bg, #fef3c7); color: var(--color-conf-alta, #92400e); border-color: var(--color-conf-alta-border, #fcd34d); }
+.pe-conf-badge--sugestao { background: var(--color-conf-sugestao-bg, #dbeafe); color: var(--color-conf-sugestao, #1d4ed8); border-color: var(--color-conf-sugestao-border, #93c5fd); }
+</style>
+<div class="pe-finding" style="border-left-color: var(--color-sev-alta-border, #fca5a5);">
+  <div class="pe-finding-header">
+    <h4 class="pe-finding-title">LGPD - Tratamento de dados pessoais sensíveis (Cláusulas 2.4, 3.9, 4.2, 4.3)</h4>
+    <div class="pe-finding-badges">
+      <span class="pe-sev-badge pe-sev-badge--alta">alta</span>
+      
+    </div>
+  </div>
+  <div class="pe-finding-desc">Tratamento massivo de dados pessoais sensíveis sem estipulação de base legal específica (art. 11), ausência de menção a DPO, medidas de segurança técnicas ou RIPD obrigatório</div>
+  
+</div>
+
+  
+    <style>
+.pe-finding {
+  border: 1px solid var(--color-border-light, #e2e8f0);
+  border-left: 4px solid var(--color-accent, #1d4ed8);
+  border-radius: var(--radius-md, 10px);
+  padding: 16px 18px;
+  margin-bottom: 16px;
+  background: var(--color-surface, #fff);
+  box-shadow: var(--shadow-sm, 0 1px 2px rgba(15,23,42,.04));
+  break-inside: avoid;
+}
+.pe-finding-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.pe-finding-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--color-text, #1f2937);
+  flex: 1 1 auto;
+}
+.pe-finding-badges {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+.pe-finding-desc {
+  font-size: 14px;
+  color: var(--color-text-secondary, #334e68);
+  line-height: 1.65;
+  margin-bottom: 10px;
+}
+.pe-finding-sources {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.pe-finding-source {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid #e2e8f0;
+}
+/* Severity badge (inline) */
+.pe-finding .pe-sev-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.pe-sev-badge--alta   { background: var(--color-sev-alta-bg, #fee2e2); color: var(--color-sev-alta, #991b1b); border-color: var(--color-sev-alta-border, #fca5a5); }
+.pe-sev-badge--media  { background: var(--color-sev-media-bg, #fef3c7); color: var(--color-sev-media, #92400e); border-color: var(--color-sev-media-border, #fde68a); }
+.pe-sev-badge--baixa  { background: var(--color-sev-baixa-bg, #dbeafe); color: var(--color-sev-baixa, #1d4ed8); border-color: var(--color-sev-baixa-border, #93c5fd); }
+/* Confidence badge (inline) */
+.pe-finding .pe-conf-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+}
+.pe-conf-badge--blindado { background: var(--color-conf-blindado-bg, #d1fae5); color: var(--color-conf-blindado, #065f46); border-color: var(--color-conf-blindado-border, #6ee7b7); }
+.pe-conf-badge--alta     { background: var(--color-conf-alta-bg, #fef3c7); color: var(--color-conf-alta, #92400e); border-color: var(--color-conf-alta-border, #fcd34d); }
+.pe-conf-badge--sugestao { background: var(--color-conf-sugestao-bg, #dbeafe); color: var(--color-conf-sugestao, #1d4ed8); border-color: var(--color-conf-sugestao-border, #93c5fd); }
+</style>
+<div class="pe-finding" style="border-left-color: var(--color-sev-alta-border, #fca5a5);">
+  <div class="pe-finding-header">
+    <h4 class="pe-finding-title">Limitação de Responsabilidade - Recursos Aéreos</h4>
+    <div class="pe-finding-badges">
+      <span class="pe-sev-badge pe-sev-badge--alta">alta</span>
+      
+    </div>
+  </div>
+  <div class="pe-finding-desc">se por ventura ocorrer demora ou impossibilidade de locomoção aérea decorrente da inexistência de recursos locais para este transporte, a UNIMED não poderá ser responsabilizada</div>
+  
+</div>
+
+  
+    <style>
+.pe-finding {
+  border: 1px solid var(--color-border-light, #e2e8f0);
+  border-left: 4px solid var(--color-accent, #1d4ed8);
+  border-radius: var(--radius-md, 10px);
+  padding: 16px 18px;
+  margin-bottom: 16px;
+  background: var(--color-surface, #fff);
+  box-shadow: var(--shadow-sm, 0 1px 2px rgba(15,23,42,.04));
+  break-inside: avoid;
+}
+.pe-finding-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.pe-finding-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--color-text, #1f2937);
+  flex: 1 1 auto;
+}
+.pe-finding-badges {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+.pe-finding-desc {
+  font-size: 14px;
+  color: var(--color-text-secondary, #334e68);
+  line-height: 1.65;
+  margin-bottom: 10px;
+}
+.pe-finding-sources {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.pe-finding-source {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid #e2e8f0;
+}
+/* Severity badge (inline) */
+.pe-finding .pe-sev-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.pe-sev-badge--alta   { background: var(--color-sev-alta-bg, #fee2e2); color: var(--color-sev-alta, #991b1b); border-color: var(--color-sev-alta-border, #fca5a5); }
+.pe-sev-badge--media  { background: var(--color-sev-media-bg, #fef3c7); color: var(--color-sev-media, #92400e); border-color: var(--color-sev-media-border, #fde68a); }
+.pe-sev-badge--baixa  { background: var(--color-sev-baixa-bg, #dbeafe); color: var(--color-sev-baixa, #1d4ed8); border-color: var(--color-sev-baixa-border, #93c5fd); }
+/* Confidence badge (inline) */
+.pe-finding .pe-conf-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+}
+.pe-conf-badge--blindado { background: var(--color-conf-blindado-bg, #d1fae5); color: var(--color-conf-blindado, #065f46); border-color: var(--color-conf-blindado-border, #6ee7b7); }
+.pe-conf-badge--alta     { background: var(--color-conf-alta-bg, #fef3c7); color: var(--color-conf-alta, #92400e); border-color: var(--color-conf-alta-border, #fcd34d); }
+.pe-conf-badge--sugestao { background: var(--color-conf-sugestao-bg, #dbeafe); color: var(--color-conf-sugestao, #1d4ed8); border-color: var(--color-conf-sugestao-border, #93c5fd); }
+</style>
+<div class="pe-finding" style="border-left-color: var(--color-sev-alta-border, #fca5a5);">
+  <div class="pe-finding-header">
+    <h4 class="pe-finding-title">SLA - Remoção Aeromédica Inter-Hospitalar (Unifly)</h4>
+    <div class="pe-finding-badges">
+      <span class="pe-sev-badge pe-sev-badge--alta">alta</span>
+      
+    </div>
+  </div>
+  <div class="pe-finding-desc">Remoção Aeromédica em caráter emergencial sob prescrição médica; Cláusulas 3.14 e 3.15 limitam drasticamente a responsabilidade por demoras ou impossibilidade de locomoção aérea</div>
+  
+</div>
+
+  
+    <style>
+.pe-finding {
+  border: 1px solid var(--color-border-light, #e2e8f0);
+  border-left: 4px solid var(--color-accent, #1d4ed8);
+  border-radius: var(--radius-md, 10px);
+  padding: 16px 18px;
+  margin-bottom: 16px;
+  background: var(--color-surface, #fff);
+  box-shadow: var(--shadow-sm, 0 1px 2px rgba(15,23,42,.04));
+  break-inside: avoid;
+}
+.pe-finding-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.pe-finding-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--color-text, #1f2937);
+  flex: 1 1 auto;
+}
+.pe-finding-badges {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+.pe-finding-desc {
+  font-size: 14px;
+  color: var(--color-text-secondary, #334e68);
+  line-height: 1.65;
+  margin-bottom: 10px;
+}
+.pe-finding-sources {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.pe-finding-source {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid #e2e8f0;
+}
+/* Severity badge (inline) */
+.pe-finding .pe-sev-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.pe-sev-badge--alta   { background: var(--color-sev-alta-bg, #fee2e2); color: var(--color-sev-alta, #991b1b); border-color: var(--color-sev-alta-border, #fca5a5); }
+.pe-sev-badge--media  { background: var(--color-sev-media-bg, #fef3c7); color: var(--color-sev-media, #92400e); border-color: var(--color-sev-media-border, #fde68a); }
+.pe-sev-badge--baixa  { background: var(--color-sev-baixa-bg, #dbeafe); color: var(--color-sev-baixa, #1d4ed8); border-color: var(--color-sev-baixa-border, #93c5fd); }
+/* Confidence badge (inline) */
+.pe-finding .pe-conf-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+}
+.pe-conf-badge--blindado { background: var(--color-conf-blindado-bg, #d1fae5); color: var(--color-conf-blindado, #065f46); border-color: var(--color-conf-blindado-border, #6ee7b7); }
+.pe-conf-badge--alta     { background: var(--color-conf-alta-bg, #fef3c7); color: var(--color-conf-alta, #92400e); border-color: var(--color-conf-alta-border, #fcd34d); }
+.pe-conf-badge--sugestao { background: var(--color-conf-sugestao-bg, #dbeafe); color: var(--color-conf-sugestao, #1d4ed8); border-color: var(--color-conf-sugestao-border, #93c5fd); }
+</style>
+<div class="pe-finding" style="border-left-color: var(--color-sev-alta-border, #fca5a5);">
+  <div class="pe-finding-header">
+    <h4 class="pe-finding-title">Rescisão por Vinculação ao Contrato Máster (Cláusula 6.1)</h4>
+    <div class="pe-finding-badges">
+      <span class="pe-sev-badge pe-sev-badge--alta">alta</span>
+      
+    </div>
+  </div>
+  <div class="pe-finding-desc">A vigência deste instrumento dar-se-á de acordo com a vigência do Contrato de Plano de Saúde - Adesão Máster... considerando-se plenamente rescindido na hipótese de rescisão daquele</div>
+  
+</div>
+
+  
+    <style>
+.pe-finding {
+  border: 1px solid var(--color-border-light, #e2e8f0);
+  border-left: 4px solid var(--color-accent, #1d4ed8);
+  border-radius: var(--radius-md, 10px);
+  padding: 16px 18px;
+  margin-bottom: 16px;
+  background: var(--color-surface, #fff);
+  box-shadow: var(--shadow-sm, 0 1px 2px rgba(15,23,42,.04));
+  break-inside: avoid;
+}
+.pe-finding-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.pe-finding-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--color-text, #1f2937);
+  flex: 1 1 auto;
+}
+.pe-finding-badges {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+.pe-finding-desc {
+  font-size: 14px;
+  color: var(--color-text-secondary, #334e68);
+  line-height: 1.65;
+  margin-bottom: 10px;
+}
+.pe-finding-sources {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.pe-finding-source {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid #e2e8f0;
+}
+/* Severity badge (inline) */
+.pe-finding .pe-sev-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.pe-sev-badge--alta   { background: var(--color-sev-alta-bg, #fee2e2); color: var(--color-sev-alta, #991b1b); border-color: var(--color-sev-alta-border, #fca5a5); }
+.pe-sev-badge--media  { background: var(--color-sev-media-bg, #fef3c7); color: var(--color-sev-media, #92400e); border-color: var(--color-sev-media-border, #fde68a); }
+.pe-sev-badge--baixa  { background: var(--color-sev-baixa-bg, #dbeafe); color: var(--color-sev-baixa, #1d4ed8); border-color: var(--color-sev-baixa-border, #93c5fd); }
+/* Confidence badge (inline) */
+.pe-finding .pe-conf-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+}
+.pe-conf-badge--blindado { background: var(--color-conf-blindado-bg, #d1fae5); color: var(--color-conf-blindado, #065f46); border-color: var(--color-conf-blindado-border, #6ee7b7); }
+.pe-conf-badge--alta     { background: var(--color-conf-alta-bg, #fef3c7); color: var(--color-conf-alta, #92400e); border-color: var(--color-conf-alta-border, #fcd34d); }
+.pe-conf-badge--sugestao { background: var(--color-conf-sugestao-bg, #dbeafe); color: var(--color-conf-sugestao, #1d4ed8); border-color: var(--color-conf-sugestao-border, #93c5fd); }
+</style>
+<div class="pe-finding" style="border-left-color: var(--color-sev-alta-border, #fca5a5);">
+  <div class="pe-finding-header">
+    <h4 class="pe-finding-title">Subcontratação sem Consentimento (Cláusula 7.2)</h4>
+    <div class="pe-finding-badges">
+      <span class="pe-sev-badge pe-sev-badge--alta">alta</span>
+      
+    </div>
+  </div>
+  <div class="pe-finding-desc">A UNIMED poderá, a seu critério, subcontratar o objeto deste contrato, no todo ou em parte, sem o prévio e expresso consentimento da CONTRATANTE</div>
+  
+</div>
+
+  
+    <style>
+.pe-finding {
+  border: 1px solid var(--color-border-light, #e2e8f0);
+  border-left: 4px solid var(--color-accent, #1d4ed8);
+  border-radius: var(--radius-md, 10px);
+  padding: 16px 18px;
+  margin-bottom: 16px;
+  background: var(--color-surface, #fff);
+  box-shadow: var(--shadow-sm, 0 1px 2px rgba(15,23,42,.04));
+  break-inside: avoid;
+}
+.pe-finding-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.pe-finding-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--color-text, #1f2937);
+  flex: 1 1 auto;
+}
+.pe-finding-badges {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+.pe-finding-desc {
+  font-size: 14px;
+  color: var(--color-text-secondary, #334e68);
+  line-height: 1.65;
+  margin-bottom: 10px;
+}
+.pe-finding-sources {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.pe-finding-source {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid #e2e8f0;
+}
+/* Severity badge (inline) */
+.pe-finding .pe-sev-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.pe-sev-badge--alta   { background: var(--color-sev-alta-bg, #fee2e2); color: var(--color-sev-alta, #991b1b); border-color: var(--color-sev-alta-border, #fca5a5); }
+.pe-sev-badge--media  { background: var(--color-sev-media-bg, #fef3c7); color: var(--color-sev-media, #92400e); border-color: var(--color-sev-media-border, #fde68a); }
+.pe-sev-badge--baixa  { background: var(--color-sev-baixa-bg, #dbeafe); color: var(--color-sev-baixa, #1d4ed8); border-color: var(--color-sev-baixa-border, #93c5fd); }
+/* Confidence badge (inline) */
+.pe-finding .pe-conf-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+}
+.pe-conf-badge--blindado { background: var(--color-conf-blindado-bg, #d1fae5); color: var(--color-conf-blindado, #065f46); border-color: var(--color-conf-blindado-border, #6ee7b7); }
+.pe-conf-badge--alta     { background: var(--color-conf-alta-bg, #fef3c7); color: var(--color-conf-alta, #92400e); border-color: var(--color-conf-alta-border, #fcd34d); }
+.pe-conf-badge--sugestao { background: var(--color-conf-sugestao-bg, #dbeafe); color: var(--color-conf-sugestao, #1d4ed8); border-color: var(--color-conf-sugestao-border, #93c5fd); }
+</style>
+<div class="pe-finding" style="border-left-color: var(--color-sev-media-border, #fde68a);">
+  <div class="pe-finding-header">
+    <h4 class="pe-finding-title">Violação crítica à LGPD: tratamento em larga escala de dados sensíveis (históric…</h4>
+    <div class="pe-finding-badges">
+      <span class="pe-sev-badge pe-sev-badge--media">media</span>
+      
+    </div>
+  </div>
+  <div class="pe-finding-desc">Violação crítica à LGPD: tratamento em larga escala de dados sensíveis (histórico médico, certidão de óbito) sem base legal específica, DPO, RIPD ou medidas técnicas de segurança, expondo a multa de até 2% do faturamento global</div>
+  
+</div>
+
+  
+    <style>
+.pe-finding {
+  border: 1px solid var(--color-border-light, #e2e8f0);
+  border-left: 4px solid var(--color-accent, #1d4ed8);
+  border-radius: var(--radius-md, 10px);
+  padding: 16px 18px;
+  margin-bottom: 16px;
+  background: var(--color-surface, #fff);
+  box-shadow: var(--shadow-sm, 0 1px 2px rgba(15,23,42,.04));
+  break-inside: avoid;
+}
+.pe-finding-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.pe-finding-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--color-text, #1f2937);
+  flex: 1 1 auto;
+}
+.pe-finding-badges {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+.pe-finding-desc {
+  font-size: 14px;
+  color: var(--color-text-secondary, #334e68);
+  line-height: 1.65;
+  margin-bottom: 10px;
+}
+.pe-finding-sources {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.pe-finding-source {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid #e2e8f0;
+}
+/* Severity badge (inline) */
+.pe-finding .pe-sev-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.pe-sev-badge--alta   { background: var(--color-sev-alta-bg, #fee2e2); color: var(--color-sev-alta, #991b1b); border-color: var(--color-sev-alta-border, #fca5a5); }
+.pe-sev-badge--media  { background: var(--color-sev-media-bg, #fef3c7); color: var(--color-sev-media, #92400e); border-color: var(--color-sev-media-border, #fde68a); }
+.pe-sev-badge--baixa  { background: var(--color-sev-baixa-bg, #dbeafe); color: var(--color-sev-baixa, #1d4ed8); border-color: var(--color-sev-baixa-border, #93c5fd); }
+/* Confidence badge (inline) */
+.pe-finding .pe-conf-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+}
+.pe-conf-badge--blindado { background: var(--color-conf-blindado-bg, #d1fae5); color: var(--color-conf-blindado, #065f46); border-color: var(--color-conf-blindado-border, #6ee7b7); }
+.pe-conf-badge--alta     { background: var(--color-conf-alta-bg, #fef3c7); color: var(--color-conf-alta, #92400e); border-color: var(--color-conf-alta-border, #fcd34d); }
+.pe-conf-badge--sugestao { background: var(--color-conf-sugestao-bg, #dbeafe); color: var(--color-conf-sugestao, #1d4ed8); border-color: var(--color-conf-sugestao-border, #93c5fd); }
+</style>
+<div class="pe-finding" style="border-left-color: var(--color-sev-media-border, #fde68a);">
+  <div class="pe-finding-header">
+    <h4 class="pe-finding-title">Dependência vitalícia do contrato principal: rescisão automática e imediata dest…</h4>
+    <div class="pe-finding-badges">
+      <span class="pe-sev-badge pe-sev-badge--media">media</span>
+      
+    </div>
+  </div>
+  <div class="pe-finding-desc">Dependência vitalícia do contrato principal: rescisão automática e imediata deste contrato se o Contrato Máster de 2012 for rescindido ou suspenso, sem salvaguarda de direitos adquiridos</div>
+  
+</div>
+
+  
+    <style>
+.pe-finding {
+  border: 1px solid var(--color-border-light, #e2e8f0);
+  border-left: 4px solid var(--color-accent, #1d4ed8);
+  border-radius: var(--radius-md, 10px);
+  padding: 16px 18px;
+  margin-bottom: 16px;
+  background: var(--color-surface, #fff);
+  box-shadow: var(--shadow-sm, 0 1px 2px rgba(15,23,42,.04));
+  break-inside: avoid;
+}
+.pe-finding-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.pe-finding-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--color-text, #1f2937);
+  flex: 1 1 auto;
+}
+.pe-finding-badges {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+.pe-finding-desc {
+  font-size: 14px;
+  color: var(--color-text-secondary, #334e68);
+  line-height: 1.65;
+  margin-bottom: 10px;
+}
+.pe-finding-sources {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.pe-finding-source {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid #e2e8f0;
+}
+/* Severity badge (inline) */
+.pe-finding .pe-sev-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.pe-sev-badge--alta   { background: var(--color-sev-alta-bg, #fee2e2); color: var(--color-sev-alta, #991b1b); border-color: var(--color-sev-alta-border, #fca5a5); }
+.pe-sev-badge--media  { background: var(--color-sev-media-bg, #fef3c7); color: var(--color-sev-media, #92400e); border-color: var(--color-sev-media-border, #fde68a); }
+.pe-sev-badge--baixa  { background: var(--color-sev-baixa-bg, #dbeafe); color: var(--color-sev-baixa, #1d4ed8); border-color: var(--color-sev-baixa-border, #93c5fd); }
+/* Confidence badge (inline) */
+.pe-finding .pe-conf-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+}
+.pe-conf-badge--blindado { background: var(--color-conf-blindado-bg, #d1fae5); color: var(--color-conf-blindado, #065f46); border-color: var(--color-conf-blindado-border, #6ee7b7); }
+.pe-conf-badge--alta     { background: var(--color-conf-alta-bg, #fef3c7); color: var(--color-conf-alta, #92400e); border-color: var(--color-conf-alta-border, #fcd34d); }
+.pe-conf-badge--sugestao { background: var(--color-conf-sugestao-bg, #dbeafe); color: var(--color-conf-sugestao, #1d4ed8); border-color: var(--color-conf-sugestao-border, #93c5fd); }
+</style>
+<div class="pe-finding" style="border-left-color: var(--color-sev-media-border, #fde68a);">
+  <div class="pe-finding-header">
+    <h4 class="pe-finding-title">Subcontratação irrestrita permitida sem consentimento prévio da contratante e se…</h4>
+    <div class="pe-finding-badges">
+      <span class="pe-sev-badge pe-sev-badge--media">media</span>
+      
+    </div>
+  </div>
+  <div class="pe-finding-desc">Subcontratação irrestrita permitida sem consentimento prévio da contratante e sem obrigações de proteção de dados aos terceiros, violando art. 46, §3º da LGPD</div>
+  
+</div>
+
+  
+    <style>
+.pe-finding {
+  border: 1px solid var(--color-border-light, #e2e8f0);
+  border-left: 4px solid var(--color-accent, #1d4ed8);
+  border-radius: var(--radius-md, 10px);
+  padding: 16px 18px;
+  margin-bottom: 16px;
+  background: var(--color-surface, #fff);
+  box-shadow: var(--shadow-sm, 0 1px 2px rgba(15,23,42,.04));
+  break-inside: avoid;
+}
+.pe-finding-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.pe-finding-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--color-text, #1f2937);
+  flex: 1 1 auto;
+}
+.pe-finding-badges {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+.pe-finding-desc {
+  font-size: 14px;
+  color: var(--color-text-secondary, #334e68);
+  line-height: 1.65;
+  margin-bottom: 10px;
+}
+.pe-finding-sources {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.pe-finding-source {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid #e2e8f0;
+}
+/* Severity badge (inline) */
+.pe-finding .pe-sev-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.pe-sev-badge--alta   { background: var(--color-sev-alta-bg, #fee2e2); color: var(--color-sev-alta, #991b1b); border-color: var(--color-sev-alta-border, #fca5a5); }
+.pe-sev-badge--media  { background: var(--color-sev-media-bg, #fef3c7); color: var(--color-sev-media, #92400e); border-color: var(--color-sev-media-border, #fde68a); }
+.pe-sev-badge--baixa  { background: var(--color-sev-baixa-bg, #dbeafe); color: var(--color-sev-baixa, #1d4ed8); border-color: var(--color-sev-baixa-border, #93c5fd); }
+/* Confidence badge (inline) */
+.pe-finding .pe-conf-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+}
+.pe-conf-badge--blindado { background: var(--color-conf-blindado-bg, #d1fae5); color: var(--color-conf-blindado, #065f46); border-color: var(--color-conf-blindado-border, #6ee7b7); }
+.pe-conf-badge--alta     { background: var(--color-conf-alta-bg, #fef3c7); color: var(--color-conf-alta, #92400e); border-color: var(--color-conf-alta-border, #fcd34d); }
+.pe-conf-badge--sugestao { background: var(--color-conf-sugestao-bg, #dbeafe); color: var(--color-conf-sugestao, #1d4ed8); border-color: var(--color-conf-sugestao-border, #93c5fd); }
+</style>
+<div class="pe-finding" style="border-left-color: var(--color-sev-media-border, #fde68a);">
+  <div class="pe-finding-header">
+    <h4 class="pe-finding-title">Ampla exclusão de responsabilidade da UNIMED para falhas na locomoção aérea deco…</h4>
+    <div class="pe-finding-badges">
+      <span class="pe-sev-badge pe-sev-badge--media">media</span>
+      
+    </div>
+  </div>
+  <div class="pe-finding-desc">Ampla exclusão de responsabilidade da UNIMED para falhas na locomoção aérea decorrentes da inexistência de recursos locais ou condições aeronáuticas adversas</div>
+  
+</div>
+
+  
+</section>
+
+
+
+
+<section id="data-table" class="content-section">
+  <h2>Data</h2>
+  
+<style>
+.pe-table-wrap {
+  border: 1px solid var(--color-border-light, #e2e8f0);
+  border-radius: var(--radius-md, 10px);
+  overflow: auto;
+  background: var(--color-surface, #fff);
+  margin-bottom: 18px;
+}
+.pe-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.pe-table caption {
+  text-align: left;
+  padding: 12px 14px;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--color-text, #1f2937);
+  border-bottom: 1px solid var(--color-border-light, #e2e8f0);
+}
+.pe-table th {
+  background: #f1f5f9;
+  text-align: left;
+  padding: 10px 14px;
+  border-bottom: 2px solid var(--color-border-light, #e2e8f0);
+  font-weight: 700;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #475569;
+  white-space: nowrap;
+}
+.pe-table th.pe-sortable {
+  cursor: pointer;
+  user-select: none;
+}
+.pe-table th.pe-sortable::after {
+  content: ' \25B4\25BE';
+  font-size: 10px;
+  color: #94a3b8;
+}
+.pe-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: top;
+}
+.pe-table tr:nth-child(even) td { background: var(--color-surface-alt, #f8fafc); }
+.pe-table tr:hover td { background: #f1f5f9; }
+.pe-table--empty {
+  text-align: center;
+  padding: 24px;
+  color: var(--color-muted, #6b7280);
+  font-size: 13px;
+}
+@media print {
+  .pe-table-wrap { border-radius: 0; box-shadow: none; }
+  .pe-table tr:hover td { background: inherit; }
+}
+</style>
+<div class="pe-table-wrap">
+  <table class="pe-table">
+    
+    <thead>
+      <tr>
+        
+          <th>Papel</th>
+        
+          <th>Razão Social</th>
+        
+          <th>CNPJ</th>
+        
+          <th>Situação</th>
+        
+      </tr>
+    </thead>
+    <tbody>
+      
+        
+          <tr>
+            
+              <td>Contratada</td>
+            
+              <td>UNIMED DO ESTADO DE SAO PAULO - FEDERACAO ESTADUAL DAS COOPERATIVAS MEDICAS</td>
+            
+              <td>43.643.139/0001-66</td>
+            
+              <td>Válido</td>
+            
+          </tr>
+        
+          <tr>
+            
+              <td>Contratante</td>
+            
+              <td>UNIMED REGIONAL JAU COOPERATIVA DE TRABALHO MEDICO</td>
+            
+              <td>02.322.043/0001-19</td>
+            
+              <td>Válido</td>
+            
+          </tr>
+        
+      
+    </tbody>
+  </table>
+</div>
+
+</section>
+
+
+
+
+
+
+  </main>
+
+  
+  <footer class="layout-footer">
+    
+<div>
+  Generated 2026-03-24
+   | Pipeline: contract-analyzer-v1
+</div>
+<div style="font-size: 11px; color: var(--color-muted);">
+  Pipeline Engine Report System
+</div>
+
+  </footer>
+
+</div>
+
+</body>
+</html>

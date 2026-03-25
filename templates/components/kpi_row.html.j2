@@ -1,0 +1,81 @@
+{# kpi_row.html.j2 -- KPI metric display with optional trend arrow.
+   Usage: {% from "components/kpi_row.html.j2" import kpi, kpi_row %}
+          {{ kpi("Revenue", "$1.2M", unit="", trend="up") }}
+          -- or wrap multiple in a row: --
+          {% call kpi_row() %}
+            {{ kpi("Items", 42) }}
+            {{ kpi("Score", 6.5, unit="/10", trend="down") }}
+          {% endcall %}
+#}
+{% macro kpi_row() %}
+<style>
+.pe-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+  margin-bottom: 24px;
+  align-items: stretch;
+}
+.pe-kpi {
+  background: var(--color-surface, #fff);
+  border: 1px solid var(--color-border, #d9e2ec);
+  border-radius: var(--radius-lg, 14px);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  min-height: 100px;
+}
+.pe-kpi-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-muted, #6b7280);
+  margin-bottom: 8px;
+}
+.pe-kpi-value-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.pe-kpi-value {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--color-primary, #1a365d);
+  line-height: 1;
+}
+.pe-kpi-unit {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-muted, #6b7280);
+}
+.pe-kpi-trend {
+  margin-top: auto;
+  padding-top: 8px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.pe-kpi-trend--up   { color: var(--color-success, #16a34a); }
+.pe-kpi-trend--down { color: var(--color-danger, #dc2626); }
+.pe-kpi-trend--flat { color: var(--color-muted, #6b7280); }
+</style>
+<div class="pe-kpi-row">
+  {{ caller() }}
+</div>
+{% endmacro %}
+
+{% macro kpi(label, value, unit="", trend=None) %}
+<div class="pe-kpi">
+  <span class="pe-kpi-label">{{ label }}</span>
+  <div class="pe-kpi-value-row">
+    <span class="pe-kpi-value">{{ value }}</span>
+    {% if unit %}<span class="pe-kpi-unit">{{ unit }}</span>{% endif %}
+  </div>
+  {% if trend %}
+  <div class="pe-kpi-trend pe-kpi-trend--{{ trend }}">
+    {% if trend == 'up' %}&#9650; Up{% elif trend == 'down' %}&#9660; Down{% else %}&#9654; Flat{% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endmacro %}

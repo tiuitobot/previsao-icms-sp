@@ -1,0 +1,26 @@
+{
+  "id": "cross_validate_r",
+  "name": "Cross-Validate with R Original",
+  "description": "Runs the original Rmd SARIMAX specification and compares Python vs R outputs. Flags discrepancies > 1% in AIC, forecasts, or coefficients.",
+  "type": "deterministic",
+  "script": "steps/cross_validate_r.py",
+  "function": "main",
+  "inputs": {
+    "required": ["sarimax_results"],
+    "optional": ["rmd_path"],
+    "expects_keys": ["models", "forecasts", "diagnostics"]
+  },
+  "outputs": {
+    "primary": "r_crosscheck.json",
+    "keys": ["comparison_table", "discrepancies", "max_deviation_pct", "verdict", "status"]
+  },
+  "compatible_executors": ["python"],
+  "cost_estimate": {"fixed_usd": 0, "notes": "Requires R + packages installed"},
+  "tags": ["validation", "cross-check", "r-lang", "regression"],
+  "library": {
+    "category": "concrete",
+    "origin": "previsao-icms-sp",
+    "domain": "financeiro",
+    "subdomain": "macro"
+  }
+}

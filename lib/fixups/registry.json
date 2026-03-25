@@ -1,0 +1,5 @@
+{
+  "schema_version": 1,
+  "description": "Fixup registry for pipeline-engine. Add domain-specific fixups here.",
+  "fixups": []
+}

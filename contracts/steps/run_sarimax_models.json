@@ -1,0 +1,28 @@
+{
+  "id": "run_sarimax_models",
+  "name": "Run SARIMAX Models",
+  "description": "Fits 5 SARIMAX models with different specifications, produces forecasts, diagnostics (AIC, BIC, Ljung-Box, ADF), and ensemble mean. Supports Monte Carlo simulation for confidence intervals.",
+  "type": "deterministic",
+  "script": "steps/run_sarimax_models.py",
+  "function": "main",
+  "inputs": {
+    "required": ["base_consolidada"],
+    "optional": ["interpreter_config"],
+    "expects_keys": ["train_data", "future_data", "scenario_params"]
+  },
+  "outputs": {
+    "primary": "sarimax_results.json",
+    "keys": ["models", "forecasts", "diagnostics", "ensemble_mean", "confidence_intervals", "annual_totals", "best_model", "status"]
+  },
+  "compatible_executors": ["python"],
+  "cost_estimate": {"fixed_usd": 0, "notes": "CPU-bound, ~30s for 5 models + 1000 MC simulations"},
+  "tags": ["modeling", "sarimax", "forecasting", "monte-carlo", "diagnostics"],
+  "library": {
+    "category": "concrete",
+    "origin": "previsao-icms-sp",
+    "domain": "financeiro",
+    "subdomain": "macro",
+    "proven_in_production": true,
+    "complementary_workers": ["cross_validate_r", "validate_forecasts"]
+  }
+}

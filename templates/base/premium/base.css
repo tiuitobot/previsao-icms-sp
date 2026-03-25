@@ -1,0 +1,41 @@
+:root {
+  --primary: #1a365d;
+  --accent: #2c5282;
+  --danger: #e74c3c;
+  --danger-bg: #ffeaea;
+  --warning: #f39c12;
+  --warning-bg: #fff8e1;
+  --info: #3498db;
+  --info-bg: #e3f2fd;
+  --success: #27ae60;
+  --bg: #ffffff;
+  --text: #2d3748;
+  --muted: #888;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: var(--text); line-height: 1.6; max-width: 900px; margin: 0 auto; padding: 40px 24px; background: var(--bg); }
+h1 { color: var(--primary); font-size: 28px; border-bottom: 3px solid var(--primary); padding-bottom: 12px; margin-bottom: 24px; }
+h2 { color: var(--accent); font-size: 20px; margin: 32px 0 16px; padding-bottom: 8px; border-bottom: 1px solid #e2e8f0; }
+h3 { color: var(--accent); font-size: 16px; margin: 24px 0 12px; }
+p { margin: 8px 0; }
+a { color: var(--accent); word-break: break-word; }
+table { width:100%; border-collapse:collapse; margin:16px 0; font-size:13px; }
+th { background:var(--primary); color:white; padding:8px 12px; text-align:left; }
+td { padding:8px 12px; border-bottom:1px solid #e2e8f0; vertical-align:top; }
+tr:nth-child(even) { background:#f7fafc; }
+.score-bar { height:8px; border-radius:4px; background:#e2e8f0; margin:8px 0; overflow:hidden; }
+.score-fill { height:100%; border-radius:4px; background: var(--success); }
+.methodology { background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:20px; margin:24px 0; font-size:13px; }
+.badge { display:inline-block; padding:2px 8px; border-radius:12px; font-size:11px; font-weight:600; color:white; }
+.footer { margin-top:48px; padding-top:16px; border-top:1px solid #e2e8f0; font-size:12px; color:var(--muted); text-align:center; }
+.finding-card { break-inside: avoid; margin: 16px 0; padding: 16px; background: #fafafa; border-radius: 8px; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04); }
+.gabarito-ok { color: #27ae60; font-weight: 600; }
+.gabarito-warn { color: #f39c12; font-weight: 600; }
+.gabarito-fail { color: #e74c3c; font-weight: 600; }
+.empty-section { color: var(--muted); font-size: 13px; }
+.mnemonicos-list { margin-left: 20px; font-size: 13px; }
+.mnemonicos-list li { margin: 8px 0; }
+@media print {
+  body { max-width:100%; padding:20px; }
+  .finding-card { break-inside:avoid; }
+}

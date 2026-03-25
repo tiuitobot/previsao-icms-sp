@@ -1,0 +1,69 @@
+{# score_gauge.html.j2 -- Visual score indicator bar.
+   Usage: {% from "components/score_gauge.html.j2" import gauge %}
+          {{ gauge(6.5, max=10, label="Risk Score") }}
+#}
+{% macro gauge(score, max=10, label="") %}
+{%- set pct = ((score / max) * 100) | round(1) if max > 0 else 0 -%}
+{%- set color = 'var(--color-success, #16a34a)' if pct <= 40
+    else ('var(--color-warning, #f59e0b)' if pct <= 70
+    else 'var(--color-danger, #dc2626)') -%}
+<style>
+.pe-gauge {
+  margin-bottom: 18px;
+}
+.pe-gauge-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+.pe-gauge-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text, #1f2937);
+}
+.pe-gauge-value {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--color-primary, #1a365d);
+}
+.pe-gauge-value small {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-muted, #6b7280);
+}
+.pe-gauge-track {
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--color-border-light, #e2e8f0);
+  overflow: hidden;
+}
+.pe-gauge-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+.pe-gauge-ticks {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--color-muted, #6b7280);
+}
+</style>
+<div class="pe-gauge">
+  <div class="pe-gauge-header">
+    {% if label %}<span class="pe-gauge-label">{{ label }}</span>{% endif %}
+    <span class="pe-gauge-value">{{ score }}<small>/{{ max }}</small></span>
+  </div>
+  <div class="pe-gauge-track">
+    <div class="pe-gauge-fill" style="width: {{ pct }}%; background: {{ color }};"></div>
+  </div>
+  <div class="pe-gauge-ticks">
+    <span>0</span>
+    <span>{{ (max / 2) | round(1) }}</span>
+    <span>{{ max }}</span>
+  </div>
+</div>
+{% endmacro %}

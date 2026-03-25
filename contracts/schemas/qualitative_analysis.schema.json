@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "contracts/schemas/qualitative_analysis.schema.json",
+  "title": "Qualitative Analysis Output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "executive_summary",
+    "risk_assessment",
+    "scenario_narratives",
+    "policy_implications",
+    "market_comparison",
+    "status"
+  ],
+  "properties": {
+    "executive_summary": {
+      "type": "string"
+    },
+    "risk_assessment": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "description",
+          "probability",
+          "impact_brl_billions"
+        ],
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "probability": {
+            "type": "string",
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ]
+          },
+          "impact_brl_billions": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "scenario_narratives": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "optimistic",
+        "pessimistic",
+        "base"
+      ],
+      "properties": {
+        "optimistic": {
+          "type": "string"
+        },
+        "pessimistic": {
+          "type": "string"
+        },
+        "base": {
+          "type": "string"
+        }
+      }
+    },
+    "policy_implications": {
+      "type": "string"
+    },
+    "market_comparison": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "const": "ok"
+    }
+  }
+}

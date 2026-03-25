@@ -1,0 +1,65 @@
+{# alert_box.html.j2 -- Alert box for info/warning/danger/success messages.
+   Usage: {% from "components/alert_box.html.j2" import alert %}
+          {{ alert("warning", "Contract expires in 30 days.") }}
+#}
+{% macro alert(type, message) %}
+{%- set t = (type | default('info') | lower | trim) -%}
+{%- set icons = {'info': '&#9432;', 'warning': '&#9888;', 'danger': '&#9888;', 'success': '&#10003;'} -%}
+{%- set labels = {'info': 'Info', 'warning': 'Warning', 'danger': 'Alert', 'success': 'Success'} -%}
+<style>
+.pe-alert {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 18px;
+  border-radius: var(--radius-lg, 14px);
+  margin-bottom: 16px;
+  font-size: 14px;
+  line-height: 1.5;
+  border: 1px solid transparent;
+}
+.pe-alert-icon {
+  font-size: 18px;
+  line-height: 1.2;
+  flex-shrink: 0;
+}
+.pe-alert-body { flex: 1 1 auto; min-width: 0; }
+.pe-alert-label {
+  font-weight: 800;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 2px;
+}
+.pe-alert--info {
+  background: var(--color-info-bg, #eff6ff);
+  border-color: #b6daf7;
+  color: #1e40af;
+}
+.pe-alert--warning {
+  background: var(--color-warning-bg, #fffbeb);
+  border-color: #fde68a;
+  color: var(--color-sev-media, #92400e);
+}
+.pe-alert--danger {
+  background: var(--color-danger-bg, #fef2f2);
+  border-color: var(--color-sev-alta-border, #fca5a5);
+  color: var(--color-sev-alta, #991b1b);
+}
+.pe-alert--success {
+  background: var(--color-success-bg, #f0fdf4);
+  border-color: #bbf7d0;
+  color: #166534;
+}
+@media print {
+  .pe-alert { break-inside: avoid; }
+}
+</style>
+<div class="pe-alert pe-alert--{{ t }}">
+  <span class="pe-alert-icon">{{ icons.get(t, '&#9432;') }}</span>
+  <div class="pe-alert-body">
+    <div class="pe-alert-label">{{ labels.get(t, t) }}</div>
+    <div>{{ message }}</div>
+  </div>
+</div>
+{% endmacro %}

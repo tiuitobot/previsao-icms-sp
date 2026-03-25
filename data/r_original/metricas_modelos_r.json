@@ -1,0 +1,52 @@
+{
+  "Modelo 1": {
+    "aic": -859.195,
+    "bic": -833.9287,
+    "loglik": 436.5975,
+    "order": [1, 1, 1],
+    "seasonal": [0, 0, 0, 12],
+    "exog": ["dias_uteis", "LS2008NOV", "TC2020APR04", "TC2022OUT05"],
+    "n_obs": 273,
+    "sigma2": 0.0024
+  },
+  "Modelo 2": {
+    "aic": -1018.554,
+    "bic": -975.2843,
+    "loglik": 521.277,
+    "order": [3, 1, 0],
+    "seasonal": [2, 0, 0, 12],
+    "exog": ["igp_di_lag1", "dias_uteis", "ibc_br_lag1", "LS2008NOV", "TC2020APR04", "TC2022OUT05"],
+    "n_obs": 272,
+    "sigma2": 0.0013
+  },
+  "Modelo 3": {
+    "aic": -1011.0537,
+    "bic": -975.4469,
+    "loglik": 515.5268,
+    "order": [0, 1, 1],
+    "seasonal": [0, 1, 1, 12],
+    "exog": ["igp_di", "ibc_br_lag1", "ibc_br", "dias_uteis", "LS2008NOV", "TC2020APR04", "TC2022OUT05"],
+    "n_obs": 260,
+    "sigma2": 0.0011
+  },
+  "Modelo 4": {
+    "aic": -1001.3305,
+    "bic": -965.7237,
+    "loglik": 510.6653,
+    "order": [0, 1, 1],
+    "seasonal": [0, 1, 2, 12],
+    "exog": ["ibc_br_lag1", "ibc_br", "dias_uteis", "LS2008NOV", "TC2020APR04", "TC2022OUT05"],
+    "n_obs": 260,
+    "sigma2": 0.0011
+  },
+  "Modelo 5": {
+    "aic": -1001.3614,
+    "bic": -965.7545,
+    "loglik": 510.6807,
+    "order": [0, 1, 1],
+    "seasonal": [0, 1, 2, 12],
+    "exog": ["igp_di", "ibc_br_lag1", "ibc_br", "LS2008NOV", "TC2020APR04", "TC2022OUT05"],
+    "n_obs": 260,
+    "sigma2": 0.0011
+  }
+}

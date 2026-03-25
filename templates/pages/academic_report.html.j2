@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="{{ lang | default('pt-BR') }}">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ title }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Academic report — clean, readable, print-optimized */
+@page {
+  size: A4;
+  margin: 2.5cm 2cm;
+  @bottom-center { content: counter(page); font-size: 9pt; color: #666; }
+}
+
+:root {
+  --font-body: 'Source Serif 4', 'Georgia', 'Times New Roman', serif;
+  --font-heading: 'Inter', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'Consolas', 'Monaco', monospace;
+  --color-text: #1a1a1a;
+  --color-heading: #1a365d;
+  --color-accent: #2c5282;
+  --color-muted: #666;
+  --color-border: #d0d0d0;
+  --color-bg-alt: #f7f7f7;
+  --color-link: #1d4ed8;
+  --max-width: 750px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: var(--font-body);
+  font-size: 11.5pt;
+  line-height: 1.7;
+  color: var(--color-text);
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+  background: #fff;
+}
+
+/* ── Title block ── */
+.title-block {
+  text-align: center;
+  margin-bottom: 2.5rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 2px solid var(--color-heading);
+}
+.title-block h1 {
+  font-family: var(--font-heading);
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--color-heading);
+  line-height: 1.3;
+  margin-bottom: 0.8rem;
+}
+.title-block .subtitle {
+  font-size: 1.1rem;
+  color: var(--color-accent);
+  margin-bottom: 0.8rem;
+}
+.title-block .authors {
+  font-size: 0.95rem;
+  color: var(--color-muted);
+  margin-bottom: 0.3rem;
+}
+.title-block .date {
+  font-size: 0.9rem;
+  color: var(--color-muted);
+}
+
+/* ── Abstract ── */
+.abstract {
+  background: var(--color-bg-alt);
+  border-left: 4px solid var(--color-accent);
+  padding: 1.2rem 1.5rem;
+  margin: 2rem 0;
+  font-size: 0.95rem;
+}
+.abstract h2 {
+  font-family: var(--font-heading);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-accent);
+  margin-bottom: 0.6rem;
+}
+
+/* ── Section headings ── */
+h2 {
+  font-family: var(--font-heading);
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--color-heading);
+  margin-top: 2.5rem;
+  margin-bottom: 0.8rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px solid var(--color-border);
+}
+h3 {
+  font-family: var(--font-heading);
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--color-heading);
+  margin-top: 1.8rem;
+  margin-bottom: 0.6rem;
+}
+h4 {
+  font-family: var(--font-heading);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-accent);
+  margin-top: 1.3rem;
+  margin-bottom: 0.5rem;
+}
+
+/* ── Body text ── */
+p { margin-bottom: 0.8rem; text-align: justify; }
+p + p { text-indent: 1.5em; }
+
+/* ── Lists ── */
+ul, ol { margin: 0.5rem 0 1rem 2rem; }
+li { margin-bottom: 0.3rem; }
+
+/* ── Tables ── */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.2rem 0;
+  font-size: 0.9rem;
+}
+th {
+  background: var(--color-heading);
+  color: #fff;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  padding: 0.5rem 0.8rem;
+  text-align: left;
+}
+td {
+  padding: 0.4rem 0.8rem;
+  border-bottom: 1px solid var(--color-border);
+}
+tr:nth-child(even) td { background: var(--color-bg-alt); }
+caption {
+  font-size: 0.85rem;
+  font-style: italic;
+  color: var(--color-muted);
+  text-align: left;
+  margin-bottom: 0.4rem;
+}
+
+/* ── Blockquotes (for highlights/policy notes) ── */
+blockquote {
+  border-left: 3px solid var(--color-accent);
+  padding: 0.6rem 1.2rem;
+  margin: 1rem 0;
+  font-style: italic;
+  color: var(--color-accent);
+  background: #f0f4ff;
+}
+
+/* ── Code / equations ── */
+code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: var(--color-bg-alt);
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+}
+pre {
+  background: var(--color-bg-alt);
+  border: 1px solid var(--color-border);
+  padding: 1rem;
+  overflow-x: auto;
+  font-size: 0.85rem;
+  margin: 1rem 0;
+  border-radius: 4px;
+}
+
+/* ── References ── */
+.references {
+  margin-top: 3rem;
+  padding-top: 1rem;
+  border-top: 2px solid var(--color-heading);
+}
+.references h2 { border-bottom: none; }
+.references ul {
+  list-style: none;
+  margin-left: 0;
+  padding-left: 0;
+}
+.references li {
+  padding-left: 2em;
+  text-indent: -2em;
+  margin-bottom: 0.6rem;
+  font-size: 0.9rem;
+}
+
+/* ── Appendices ── */
+.appendix {
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-border);
+}
+.appendix h2 { font-size: 1.1rem; }
+
+/* ── Footnotes ── */
+.footnote {
+  font-size: 0.8rem;
+  color: var(--color-muted);
+  border-top: 1px solid var(--color-border);
+  margin-top: 2rem;
+  padding-top: 0.8rem;
+}
+
+/* ── Print ── */
+@media print {
+  body { font-size: 10.5pt; padding: 0; max-width: none; }
+  .title-block { break-after: avoid; }
+  .abstract { break-inside: avoid; }
+  h2, h3 { break-after: avoid; }
+  table, figure { break-inside: avoid; }
+  blockquote { break-inside: avoid; }
+  pre { break-inside: avoid; }
+  .references li { break-inside: avoid; }
+  .appendix { break-before: page; }
+  .no-print { display: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- Title Block -->
+<div class="title-block">
+  <h1>{{ title }}</h1>
+  {% if subtitle %}<div class="subtitle">{{ subtitle }}</div>{% endif %}
+  {% if authors %}<div class="authors">{{ authors | join(', ') if authors is iterable and authors is not string else authors }}</div>{% endif %}
+  {% if date %}<div class="date">{{ date }}</div>{% endif %}
+</div>
+
+<!-- Abstract -->
+{% if abstract %}
+<div class="abstract">
+  <h2>Abstract</h2>
+  <p>{{ abstract }}</p>
+</div>
+{% endif %}
+
+{% if abstract_en %}
+<div class="abstract">
+  <h2>Abstract (English)</h2>
+  <p>{{ abstract_en }}</p>
+</div>
+{% endif %}
+
+<!-- Sections -->
+{% for section in sections %}
+{% set content = section.content_markdown | default(section.content | default('')) %}
+{% if content.startswith('##') %}
+{{ content | md }}
+{% else %}
+<h2>{{ loop.index }}. {{ section.title }}</h2>
+{{ content | md }}
+{% endif %}
+{% endfor %}
+
+<!-- References -->
+{% if referencias %}
+<div class="references">
+  <h2>Referências</h2>
+  <ul>
+    {% for ref in referencias %}
+    <li>{% if ref is mapping %}{{ ref.referencia_apa | default(ref.reference | default(ref | string)) }}{% else %}{{ ref }}{% endif %}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<!-- Appendices -->
+{% if anexos %}
+{% for anexo in anexos %}
+<div class="appendix">
+  <h2>Anexo {{ loop.index }}: {{ anexo.title | default(anexo.titulo | default('')) }}</h2>
+  {{ (anexo.conteudo_markdown | default(anexo.content_markdown | default(anexo.content | default(anexo.conteudo | default(''))))) | md }}
+</div>
+{% endfor %}
+{% endif %}
+
+<!-- Footer -->
+<div class="footnote">
+  <p>Relatório gerado automaticamente via pipeline-engine. {{ date }}</p>
+</div>
+
+</body>
+</html>

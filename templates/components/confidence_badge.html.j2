@@ -1,0 +1,36 @@
+{# confidence_badge.html.j2 -- Confidence tier badge (blindado/alta_confianca/sugestao).
+   Usage: {% from "components/confidence_badge.html.j2" import confidence %}
+          {{ confidence("blindado") }}
+#}
+{% macro confidence(level) %}
+{%- set lvl = (level | default('sugestao') | lower | trim) -%}
+{%- set label_map = {
+  'blindado': 'Armored',
+  'alta_confianca': 'High confidence',
+  'alta': 'High confidence',
+  'sugestao': 'Suggestion'
+} -%}
+{%- set css_key = 'blindado' if lvl == 'blindado' else ('alta' if lvl in ['alta_confianca', 'alta'] else 'sugestao') -%}
+<style>
+.pe-confidence {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.pe-confidence--blindado { background: var(--color-conf-blindado-bg, #d1fae5); color: var(--color-conf-blindado, #065f46); border-color: var(--color-conf-blindado-border, #6ee7b7); }
+.pe-confidence--alta     { background: var(--color-conf-alta-bg, #fef3c7); color: var(--color-conf-alta, #92400e); border-color: var(--color-conf-alta-border, #fcd34d); }
+.pe-confidence--sugestao { background: var(--color-conf-sugestao-bg, #dbeafe); color: var(--color-conf-sugestao, #1d4ed8); border-color: var(--color-conf-sugestao-border, #93c5fd); }
+</style>
+<span class="pe-confidence pe-confidence--{{ css_key }}">
+  {%- if css_key == 'blindado' %}&#9670;{% elif css_key == 'alta' %}&#9671;{% else %}&#9675;{% endif %}
+  {{ label_map.get(lvl, lvl | replace('_', ' ')) -}}
+</span>
+{%- endmacro %}

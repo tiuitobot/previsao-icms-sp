@@ -1,0 +1,27 @@
+{
+  "id": "render_academic",
+  "name": "Render Academic Report",
+  "description": "Renders academic-style HTML report with methodology, model specifications, diagnostic tables (AIC/BIC/Ljung-Box), coefficient tables, static matplotlib charts, and references.",
+  "type": "deterministic",
+  "extends": "_base_renderer",
+  "script": "steps/render_academic.py",
+  "function": "main",
+  "inputs": {
+    "required": ["sarimax_results", "generate_charts"],
+    "optional": ["qualitative_analysis"],
+    "expects_keys": ["static_charts", "models", "diagnostics", "forecasts"]
+  },
+  "outputs": {
+    "primary": "academic_report.html",
+    "keys": ["html_path", "status"]
+  },
+  "compatible_executors": ["python"],
+  "cost_estimate": {"fixed_usd": 0},
+  "tags": ["rendering", "academic", "html", "methodology"],
+  "library": {
+    "category": "concrete",
+    "origin": "previsao-icms-sp",
+    "domain": "financeiro",
+    "subdomain": "macro"
+  }
+}

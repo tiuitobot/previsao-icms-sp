@@ -1,0 +1,26 @@
+{
+  "id": "prepare_base",
+  "name": "Prepare Consolidated Base",
+  "description": "Merges macro data + SEFAZ ICMS, creates lags, dummy variables, and forward projections for exogenous variables using Focus expectations.",
+  "type": "deterministic",
+  "script": "steps/prepare_base.py",
+  "function": "main",
+  "inputs": {
+    "required": ["macro_data", "sefaz_data"],
+    "optional": ["interpreter_config"],
+    "expects_keys": ["ibc_br", "igp_di", "focus_expectations", "icms_sp_series"]
+  },
+  "outputs": {
+    "primary": "base_consolidada.json",
+    "keys": ["base_data", "train_data", "future_data", "n_columns", "n_rows", "horizon_end", "scenario_params", "status"]
+  },
+  "compatible_executors": ["python"],
+  "cost_estimate": {"fixed_usd": 0},
+  "tags": ["etl", "feature-engineering", "lags", "dummies"],
+  "library": {
+    "category": "concrete",
+    "origin": "previsao-icms-sp",
+    "domain": "financeiro",
+    "subdomain": "macro"
+  }
+}
