@@ -171,11 +171,7 @@ def _generate_plotly_charts(sarimax_results: dict, base_data: list) -> dict:
         fig.add_trace(go.Scatter(x=dates, y=values, name=name,
                                   line=dict(color=colors[i % len(colors)], width=1.5),
                                   opacity=0.6))
-    if ensemble:
-        dates = [e["data"] for e in ensemble]
-        values = [e["forecast"] / 1e9 for e in ensemble]
-        fig.add_trace(go.Scatter(x=dates, y=values, name="Ensemble",
-                                  line=dict(color="black", width=3)))
+    # Ensemble line removed — dynamic selection in dashboard JS adds it on demand
     fig.update_layout(
         title="Previsão ICMS-SP por Modelo",
         xaxis_title="Data", yaxis_title="R$ bilhões",
@@ -488,10 +484,7 @@ def _generate_static_charts(sarimax_results: dict, output_dir: Path, base_data: 
         dates = pd.to_datetime([f["data"] for f in model_fc])
         values = [f["forecast"] / 1e9 for f in model_fc]
         ax.plot(dates, values, label=name, alpha=0.6, linewidth=1.5)
-    if ensemble:
-        dates = pd.to_datetime([e["data"] for e in ensemble])
-        values = [e["forecast"] / 1e9 for e in ensemble]
-        ax.plot(dates, values, label="Ensemble", color="black", linewidth=2.5)
+    # Ensemble line removed — best candidate shown dynamically in dashboard
     ax.set_title("Previsão ICMS-SP por Modelo", fontsize=14, fontweight="bold")
     ax.set_ylabel("R$ bilhões")
     ax.legend(loc="upper left")
