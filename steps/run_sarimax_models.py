@@ -535,6 +535,22 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
     }
 
     # =========================================================================
+    # MC annual paths per model — for client-side CI computation
+    # =========================================================================
+    mc_paths_output = {}
+    for model_name, paths in mc_simulations.items():
+        # paths shape: [N_SIMULATIONS, n_future]
+        # Save annual sums per simulation (not monthly — too large)
+        annual_paths = {}
+        for year in sorted(set(future_df["data"].dt.year)):
+            year_mask = future_df["data"].dt.year == year
+            year_indices = [i for i, m in enumerate(year_mask) if m]
+            if year_indices:
+                year_sums = paths[:, year_indices].sum(axis=1)  # [N_SIMULATIONS]
+                annual_paths[str(year)] = [round(float(v) / 1e9, 2) for v in year_sums]  # in billions
+        mc_paths_output[model_name] = annual_paths
+
+    # =========================================================================
     # Monte Carlo ensemble: use best candidate's components
     # =========================================================================
     if best_candidate_name and best_candidate_name in all_candidates:
@@ -667,6 +683,7 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
             "models_failed": len(valid_models) - len(mc_models_used),
             "best_candidate_components": mc_models_used,
         },
+        "mc_annual_paths": mc_paths_output,
         "n_models_fitted": len(valid_models),
         "status": "ok"
     }
