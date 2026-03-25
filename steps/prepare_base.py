@@ -114,16 +114,39 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
         month_idx = int(row["mes"]) - 1
         df.loc[idx, "ibc_br"] = target_annual_mean * seasonal_factors[month_idx]
 
-    # Forward projection for IGP-DI (geometric growth — no strong seasonality)
+    # Forward projection for IGP-DI — calibrate to Focus annual target (dec-to-dec)
     igpm_growth = float(inflation_override) / 100 if inflation_override else (focus.get("IGP-M", 5.0) / 100)
 
     last_igp = df.loc[df["igp_di"].notna(), "igp_di"].iloc[-1] if df["igp_di"].notna().any() else 100.0
     last_igp_date = df.loc[df["igp_di"].notna(), "data"].iloc[-1]
-    monthly_igp = (1 + igpm_growth) ** (1/12) - 1
+
+    # Find Dec of previous year as reference for annual inflation target
+    last_obs_year_igp = last_igp_date.year
+    dec_prev_mask = (df["ano"] == last_obs_year_igp - 1) & (df["mes"] == 12) & df["igp_di"].notna()
+    if dec_prev_mask.any():
+        igp_dec_prev = float(df.loc[dec_prev_mask, "igp_di"].iloc[0])
+    else:
+        igp_dec_prev = last_igp / (1 + igpm_growth)
+
+    # Target: IGP-DI(Dec current year) = IGP-DI(Dec prev year) × (1 + Focus)
+    igp_dec_target = igp_dec_prev * (1 + igpm_growth)
+
+    # How many months from last observed to Dec of the target year?
+    target_dec = pd.Timestamp(f"{last_obs_year_igp}-12-01")
+    if last_igp_date >= target_dec:
+        # Already past Dec → target next year's Dec
+        target_dec = pd.Timestamp(f"{last_obs_year_igp + 1}-12-01")
+        igp_dec_target = igp_dec_prev * ((1 + igpm_growth) ** 2)
+
+    months_to_dec = max(1, (target_dec.year - last_igp_date.year) * 12 + (target_dec.month - last_igp_date.month))
+    # Solve for monthly rate: last_igp × (1+r)^months = igp_dec_target
+    calibrated_monthly = (igp_dec_target / last_igp) ** (1 / months_to_dec) - 1
 
     future_mask_igp = (df["data"] > last_igp_date) & df["igp_di"].isna()
     for i, idx in enumerate(df[future_mask_igp].index):
-        df.loc[idx, "igp_di"] = last_igp * ((1 + monthly_igp) ** (i + 1))
+        row = df.loc[idx]
+        months_from_last = (row["ano"] - last_igp_date.year) * 12 + (row["mes"] - last_igp_date.month)
+        df.loc[idx, "igp_di"] = last_igp * ((1 + calibrated_monthly) ** months_from_last)
 
     # Recalculate lags after projection fill
     for col in ["ibc_br", "igp_di"]:
