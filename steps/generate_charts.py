@@ -3,11 +3,9 @@
 Charts produced:
   Plotly (interactive JSON):
     1. forecast_comparison — all models + ensemble
-    2. annual_totals — ensemble annual totals
-    3. fan_chart — historical + forecast with 50%/95% CI bands
-    4. annual_totals_ci — bar chart with asymmetric error bars
-    5. mape_by_model — horizontal bars for ALL candidates (individual + ensemble)
-    6. exogenous_panel — 2x2 subplot: IBC-BR, IGP-DI, dias úteis, dummies
+    2. fan_chart — historical + forecast with 50%/95% CI bands
+    3. mape_by_model — horizontal bars for ALL candidates (individual + ensemble)
+    4. exogenous_panel — 2x2 subplot: IBC-BR, IGP-DI, dias úteis, dummies
 
   Matplotlib (static PNG for academic report):
     1. forecast_comparison
@@ -186,22 +184,7 @@ def _generate_plotly_charts(sarimax_results: dict, base_data: list) -> dict:
     charts["forecast_comparison"] = json.loads(json.dumps(fig.to_dict(), cls=PlotlyJSONEncoder))
 
     # ------------------------------------------------------------------
-    # Chart 2: Annual totals
-    # ------------------------------------------------------------------
-    annual = sarimax_results.get("annual_totals", {})
-    if annual.get("ensemble"):
-        years = list(annual["ensemble"].keys())
-        fig3 = go.Figure(data=[
-            go.Bar(x=years, y=[annual["ensemble"][y] for y in years],
-                   text=[f"R$ {annual['ensemble'][y]:.1f}B" for y in years],
-                   textposition="auto", marker_color="#1f77b4")
-        ])
-        fig3.update_layout(title="Previsão Anual ICMS-SP (Ensemble)",
-                           yaxis_title="R$ bilhões", template="plotly_white", height=400)
-        charts["annual_totals"] = json.loads(json.dumps(fig3.to_dict(), cls=PlotlyJSONEncoder))
-
-    # ------------------------------------------------------------------
-    # Chart 3: Fan chart with CI bands
+    # Chart 2: Fan chart with CI bands
     # ------------------------------------------------------------------
     ci_monthly = _extract_ci_monthly(sarimax_results)
     hist_df = _build_historical_series(base_data)
@@ -289,45 +272,7 @@ def _generate_plotly_charts(sarimax_results: dict, base_data: list) -> dict:
         charts["fan_chart"] = json.loads(json.dumps(fig_fan.to_dict(), cls=PlotlyJSONEncoder))
 
     # ------------------------------------------------------------------
-    # Chart 4: Annual totals with asymmetric error bars
-    # ------------------------------------------------------------------
-    if ci_monthly and annual.get("ensemble"):
-        ci_df = pd.DataFrame(ci_monthly)
-        ci_df["data"] = pd.to_datetime(ci_df["data"])
-        ci_df["year"] = ci_df["data"].dt.year.astype(str)
-
-        annual_ci = ci_df.groupby("year").agg(
-            p5_sum=("p5", "sum"),
-            p50_sum=("p50", "sum"),
-            p95_sum=("p95", "sum"),
-        ).reset_index()
-
-        years_ci = annual_ci["year"].tolist()
-        p50_vals = (annual_ci["p50_sum"] / 1e9).tolist()
-        err_minus = ((annual_ci["p50_sum"] - annual_ci["p5_sum"]) / 1e9).tolist()
-        err_plus = ((annual_ci["p95_sum"] - annual_ci["p50_sum"]) / 1e9).tolist()
-
-        fig5 = go.Figure(data=[
-            go.Bar(
-                x=years_ci, y=p50_vals,
-                text=[f"R$ {v:.1f}B" for v in p50_vals],
-                textposition="outside",
-                marker_color="#3498DB",
-                error_y=dict(
-                    type="data", symmetric=False,
-                    array=err_plus, arrayminus=err_minus,
-                    color="black", thickness=1.5, width=6,
-                ),
-            )
-        ])
-        fig5.update_layout(
-            title="Totais Anuais com Intervalos de Confiança (IC 95%)",
-            yaxis_title="R$ bilhões", template="plotly_white", height=450,
-        )
-        charts["annual_totals_ci"] = json.loads(json.dumps(fig5.to_dict(), cls=PlotlyJSONEncoder))
-
-    # ------------------------------------------------------------------
-    # Chart 5: MAPE by model — ALL candidates (individual + ensemble)
+    # Chart 3: MAPE by model — ALL candidates (individual + ensemble)
     # ------------------------------------------------------------------
     all_candidates = _get_all_candidates(sarimax_results)
 
@@ -365,11 +310,14 @@ def _generate_plotly_charts(sarimax_results: dict, base_data: list) -> dict:
                 textposition="outside",
             )
         ])
-        # Add threshold lines
-        fig6.add_vline(x=5, line_dash="dash", line_color="#2ECC71", opacity=0.6,
-                       annotation_text="5% (bom)")
-        fig6.add_vline(x=10, line_dash="dash", line_color="#E74C3C", opacity=0.6,
-                       annotation_text="10% (alerta)")
+        # Dynamic threshold lines based on data percentiles
+        mape_arr = np.array(mape_values)
+        p25_mape = float(np.percentile(mape_arr, 25))
+        p75_mape = float(np.percentile(mape_arr, 75))
+        fig6.add_vline(x=p25_mape, line_dash="dash", line_color="#2ECC71", opacity=0.6,
+                       annotation_text=f"{p25_mape:.1f}% (bom)")
+        fig6.add_vline(x=p75_mape, line_dash="dash", line_color="#E74C3C", opacity=0.6,
+                       annotation_text=f"{p75_mape:.1f}% (alerta)")
 
         fig6.update_layout(
             title="MAPE por Modelo — Todos os Candidatos (Out-of-Sample)",
@@ -381,7 +329,7 @@ def _generate_plotly_charts(sarimax_results: dict, base_data: list) -> dict:
         charts["mape_by_model"] = json.loads(json.dumps(fig6.to_dict(), cls=PlotlyJSONEncoder))
 
     # ------------------------------------------------------------------
-    # Chart 6: Exogenous variables panel — 2x2 subplot
+    # Chart 4: Exogenous variables panel — 2x2 subplot
     # ------------------------------------------------------------------
     if not hist_df.empty:
         fig7 = make_subplots(
