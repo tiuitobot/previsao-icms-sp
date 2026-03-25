@@ -15,9 +15,11 @@ from statsmodels.tsa.stattools import adfuller
 N_SIMULATIONS = 1000
 MC_PERCENTILES = [5, 25, 50, 75, 95]
 
-# Rolling OOS validation windows
-OOS_N_WINDOWS = 5
-OOS_WINDOW_SIZE = 12  # months per window
+# OOS validation: post-dummy window
+# Last structural dummy ends May 2023 (TC2022OUT05).
+# OOS test only uses data AFTER all dummies are fully in the training set.
+LAST_DUMMY_END = "2023-05-01"  # TC2022OUT05 last month
+OOS_MIN_POST_DUMMY_MONTHS = 1  # minimum test months to be valid
 
 
 def _to_python(obj):
@@ -128,165 +130,107 @@ def _run_monte_carlo(fitted_result, n_steps, exog_future, n_simulations=N_SIMULA
         return None
 
 
-def _run_oos_validation(train_df, y_full, spec,
-                        n_windows=OOS_N_WINDOWS,
-                        window_size=OOS_WINDOW_SIZE):
-    """Rolling out-of-sample validation with 5 windows.
+def _run_oos_validation(train_df, y_full, spec):
+    """Post-dummy OOS validation.
 
-    Windows (T = last observation index):
-      Window 1: train up to T-60, test T-60 to T-48
-      Window 2: train up to T-48, test T-48 to T-36
-      Window 3: train up to T-36, test T-36 to T-24
-      Window 4: train up to T-24, test T-24 to T-12
-      Window 5: train up to T-12, test T-12 to T
+    Trains on data up to LAST_DUMMY_END, tests on everything after.
+    This ensures all structural dummy coefficients are estimated.
+    The window size grows as more ICMS data becomes available.
 
-    Returns dict with per-window MAPEs and the average MAPE across windows.
+    With ICMS until jan/2024: test = jun/2023 to jan/2024 (8 months)
+    With ICMS until fev/2026: test = jun/2023 to fev/2026 (33 months)
     """
-    n_total = len(train_df)
-    total_holdout_needed = n_windows * window_size  # 60 months
-    min_train = 24  # minimum training observations
+    dummy_end = pd.Timestamp(LAST_DUMMY_END)
 
-    if n_total < total_holdout_needed + min_train:
-        return {"status": "insufficient_data", "mape": None, "windows": []}
+    # Train up to dummy_end (inclusive)
+    train_mask = train_df["data"] <= dummy_end
+    test_mask = train_df["data"] > dummy_end
 
-    window_mapes = []
-    window_details = []
+    train_subset = train_df[train_mask].copy()
+    test_subset = train_df[test_mask].copy()
 
-    for w in range(n_windows):
-        # Window w: test_end offset from T
-        # w=0 → test is [T-60, T-48), w=1 → [T-48, T-36), ...
-        test_end_offset = (n_windows - 1 - w) * window_size  # from end
-        test_start_offset = test_end_offset + window_size
+    n_test = len(test_subset)
+    if n_test < OOS_MIN_POST_DUMMY_MONTHS:
+        return {"status": "insufficient_post_dummy_data", "mape": None,
+                "n_test_months": n_test, "dummy_end": LAST_DUMMY_END}
 
-        train_end_idx = n_total - test_start_offset
-        test_start_idx = n_total - test_start_offset
-        test_end_idx = n_total - test_end_offset if test_end_offset > 0 else n_total
+    y_train = y_full[train_mask].copy()
+    y_test_real = test_subset["icms_sp"].astype(float).values
 
-        if train_end_idx < min_train:
-            window_details.append({
-                "window": w + 1,
-                "status": "insufficient_train_data",
-                "mape": None
-            })
-            continue
+    try:
+        X_train = train_subset[spec["exog_cols"]].astype(float)
+        X_test = test_subset[spec["exog_cols"]].astype(float)
 
-        train_subset = train_df.iloc[:train_end_idx].copy()
-        test_subset = train_df.iloc[test_start_idx:test_end_idx].copy()
+        fitted = _fit_model(y_train, X_train, spec["order"], spec["seasonal_order"])
+        pred = fitted.get_forecast(steps=n_test, exog=X_test)
+        pred_real = np.exp(pred.predicted_mean).values
 
-        y_train = y_full.iloc[:train_end_idx].copy()
-        y_test_real = test_subset["icms_sp"].astype(float).values
+        sum_real = float(np.sum(y_test_real))
+        sum_pred = float(np.sum(pred_real))
+        mape_accumulated = abs((sum_real - sum_pred) / sum_real) * 100 if sum_real != 0 else None
+        mape_monthly = float(np.mean(np.abs((y_test_real - pred_real) / y_test_real)) * 100)
 
+        return {
+            "status": "ok",
+            "mape": round(mape_accumulated, 2) if mape_accumulated is not None else None,
+            "mape_accumulated": round(mape_accumulated, 2) if mape_accumulated is not None else None,
+            "mape_monthly": round(mape_monthly, 2),
+            "n_test_months": n_test,
+            "train_end": dummy_end.strftime("%Y-%m-%d"),
+            "test_start": test_subset["data"].iloc[0].strftime("%Y-%m-%d"),
+            "test_end": test_subset["data"].iloc[-1].strftime("%Y-%m-%d"),
+            "sum_real_brl": round(sum_real / 1e9, 2),
+            "sum_pred_brl": round(sum_pred / 1e9, 2),
+            "dummy_end": LAST_DUMMY_END,
+            "note": f"Janela pós-dummies: treino até {LAST_DUMMY_END}, teste {n_test} meses. "
+                    f"Todas as dummies estruturais estão estimadas no treino.",
+        }
+    except Exception as exc:
+        return {"status": "error", "mape": None, "error": str(exc)}
+
+
+def _run_ensemble_oos_validation(train_df, y_full, component_specs):
+    """Post-dummy OOS validation for an ensemble.
+
+    Same window as individual models: train up to LAST_DUMMY_END,
+    test on everything after. Fits all components, averages forecasts,
+    then computes accumulated MAPE.
+    """
+    dummy_end = pd.Timestamp(LAST_DUMMY_END)
+
+    train_mask = train_df["data"] <= dummy_end
+    test_mask = train_df["data"] > dummy_end
+
+    train_subset = train_df[train_mask].copy()
+    test_subset = train_df[test_mask].copy()
+
+    n_test = len(test_subset)
+    if n_test < OOS_MIN_POST_DUMMY_MONTHS:
+        return None
+
+    y_train = y_full[train_mask].copy()
+    y_test_real = test_subset["icms_sp"].astype(float).values
+
+    component_preds = []
+    for spec_name, spec in component_specs.items():
         try:
             X_train = train_subset[spec["exog_cols"]].astype(float)
             X_test = test_subset[spec["exog_cols"]].astype(float)
-
             fitted = _fit_model(y_train, X_train, spec["order"], spec["seasonal_order"])
-            pred = fitted.get_forecast(steps=len(test_subset), exog=X_test)
+            pred = fitted.get_forecast(steps=n_test, exog=X_test)
             pred_real = np.exp(pred.predicted_mean).values
-
-            # MAPE anual: erro no acumulado de 12 meses (relevante para orçamento)
-            sum_real = float(np.sum(y_test_real))
-            sum_pred = float(np.sum(pred_real))
-            mape_annual = abs((sum_real - sum_pred) / sum_real) * 100 if sum_real != 0 else None
-            # MAPE mensal: erro médio mês a mês (métrica secundária)
-            mape_monthly = float(np.mean(np.abs((y_test_real - pred_real) / y_test_real)) * 100)
-
-            window_details.append({
-                "window": w + 1,
-                "status": "ok",
-                "mape_annual": round(mape_annual, 2) if mape_annual is not None else None,
-                "mape_monthly": round(mape_monthly, 2),
-                "mape": round(mape_annual, 2) if mape_annual is not None else round(mape_monthly, 2),
-                "train_size": train_end_idx,
-                "test_start": test_subset["data"].iloc[0].strftime("%Y-%m-%d"),
-                "test_end": test_subset["data"].iloc[-1].strftime("%Y-%m-%d"),
-                "sum_real_brl": round(sum_real / 1e9, 2),
-                "sum_pred_brl": round(sum_pred / 1e9, 2),
-            })
-            window_mapes.append(mape_annual if mape_annual is not None else mape_monthly)
-        except Exception as exc:
-            window_details.append({
-                "window": w + 1,
-                "status": "error",
-                "mape": None,
-                "error": str(exc)
-            })
-
-    avg_mape = round(float(np.mean(window_mapes)), 2) if window_mapes else None
-
-    return {
-        "status": "ok" if window_mapes else "all_windows_failed",
-        "mape": avg_mape,
-        "n_windows_ok": len(window_mapes),
-        "n_windows_total": n_windows,
-        "windows": window_details,
-    }
-
-
-def _run_ensemble_oos_validation(train_df, y_full, component_specs,
-                                 n_windows=OOS_N_WINDOWS,
-                                 window_size=OOS_WINDOW_SIZE):
-    """Rolling OOS validation for an ensemble (average of component forecasts).
-
-    In each window, fits all component models, averages their forecasts,
-    then computes MAPE of the averaged forecast vs actuals.
-
-    Returns average MAPE across windows.
-    """
-    n_total = len(train_df)
-    total_holdout_needed = n_windows * window_size
-    min_train = 24
-
-    if n_total < total_holdout_needed + min_train:
-        return None
-
-    window_mapes = []
-
-    for w in range(n_windows):
-        test_end_offset = (n_windows - 1 - w) * window_size
-        test_start_offset = test_end_offset + window_size
-
-        train_end_idx = n_total - test_start_offset
-        test_start_idx = n_total - test_start_offset
-        test_end_idx = n_total - test_end_offset if test_end_offset > 0 else n_total
-
-        if train_end_idx < min_train:
+            component_preds.append(pred_real)
+        except Exception:
             continue
 
-        train_subset = train_df.iloc[:train_end_idx].copy()
-        test_subset = train_df.iloc[test_start_idx:test_end_idx].copy()
-
-        y_train = y_full.iloc[:train_end_idx].copy()
-        y_test_real = test_subset["icms_sp"].astype(float).values
-
-        # Fit each component and collect forecasts
-        component_preds = []
-        for spec_name, spec in component_specs.items():
-            try:
-                X_train = train_subset[spec["exog_cols"]].astype(float)
-                X_test = test_subset[spec["exog_cols"]].astype(float)
-                fitted = _fit_model(y_train, X_train, spec["order"], spec["seasonal_order"])
-                pred = fitted.get_forecast(steps=len(test_subset), exog=X_test)
-                pred_real = np.exp(pred.predicted_mean).values
-                component_preds.append(pred_real)
-            except Exception:
-                # Skip this component for this window
-                continue
-
-        if not component_preds:
-            continue
-
-        # Average the component forecasts, then compute MAPE anual (acumulado)
-        avg_pred = np.mean(component_preds, axis=0)
-        sum_real = float(np.sum(y_test_real))
-        sum_pred = float(np.sum(avg_pred))
-        mape_annual = abs((sum_real - sum_pred) / sum_real) * 100 if sum_real != 0 else None
-        if mape_annual is not None:
-            window_mapes.append(mape_annual)
-
-    if not window_mapes:
+    if not component_preds:
         return None
-    return round(float(np.mean(window_mapes)), 2)
+
+    avg_pred = np.mean(component_preds, axis=0)
+    sum_real = float(np.sum(y_test_real))
+    sum_pred = float(np.sum(avg_pred))
+    mape = abs((sum_real - sum_pred) / sum_real) * 100 if sum_real != 0 else None
+    return round(mape, 2) if mape is not None else None
 
 
 def _load(od: Path, name: str) -> dict:
