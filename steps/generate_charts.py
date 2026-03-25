@@ -3,19 +3,17 @@
 Charts produced:
   Plotly (interactive JSON):
     1. forecast_comparison — all models + ensemble
-    2. aic_comparison — AIC bar chart
-    3. annual_totals — ensemble annual totals
-    4. fan_chart — historical + forecast with 50%/95% CI bands
-    5. annual_totals_ci — bar chart with asymmetric error bars
-    6. mape_by_model — horizontal bars, color-coded by MAPE threshold
-    7. exogenous_panel — 2x2 subplot: IBC-BR, IGP-DI, dias uteis, dummies
+    2. annual_totals — ensemble annual totals
+    3. fan_chart — historical + forecast with 50%/95% CI bands
+    4. annual_totals_ci — bar chart with asymmetric error bars
+    5. mape_by_model — horizontal bars for ALL candidates (individual + ensemble)
+    6. exogenous_panel — 2x2 subplot: IBC-BR, IGP-DI, dias úteis, dummies
 
   Matplotlib (static PNG for academic report):
     1. forecast_comparison
-    2. aic_comparison
-    3. diagnostics_heatmap
-    4. residual_diagnostics — 2x2 per best model: series, histogram, ACF, Q-Q
-    5. fan_chart_static — historical + forecast with CI bands
+    2. diagnostics_heatmap
+    3. residual_diagnostics — 2x2 per best model: series, histogram, ACF, Q-Q
+    4. fan_chart_static — historical + forecast with CI bands
 """
 import json
 import warnings
@@ -77,6 +75,12 @@ def _extract_ci_monthly(sarimax_results: dict) -> list:
     if isinstance(ci_block, dict) and "monthly" in ci_block:
         return ci_block["monthly"]
 
+    # Case 1b: intervals key (actual key used by run_sarimax_models)
+    if isinstance(ci_block, dict) and "intervals" in ci_block:
+        intervals = ci_block["intervals"]
+        if isinstance(intervals, list) and intervals and "p5" in intervals[0]:
+            return intervals
+
     # Case 2: per-model CI from best model
     best = sarimax_results.get("best_model")
     forecasts = sarimax_results.get("forecasts", {})
@@ -115,6 +119,29 @@ def _extract_ci_monthly(sarimax_results: dict) -> list:
     return []
 
 
+def _get_all_candidates(sarimax_results: dict) -> dict:
+    """Extract all MAPE candidates from sarimax results.
+
+    Tries all_candidates first, then falls back to diagnostics.
+    Returns dict: {name: {"mape": float, "type": str}}.
+    """
+    # Prefer all_candidates if it exists
+    all_cands = sarimax_results.get("all_candidates", {})
+    if all_cands:
+        return all_cands
+
+    # Fallback: build from diagnostics
+    diagnostics = sarimax_results.get("diagnostics", {})
+    candidates = {}
+    for model_name, diag in diagnostics.items():
+        if isinstance(diag, dict) and "mape" in diag and diag["mape"] is not None:
+            candidates[model_name] = {
+                "mape": diag["mape"],
+                "type": "individual",
+            }
+    return candidates
+
+
 # ---------------------------------------------------------------------------
 # Plotly interactive charts
 # ---------------------------------------------------------------------------
@@ -130,12 +157,11 @@ def _generate_plotly_charts(sarimax_results: dict, base_data: list) -> dict:
 
     forecasts = sarimax_results.get("forecasts", {})
     ensemble = sarimax_results.get("ensemble_mean", [])
-    diagnostics = sarimax_results.get("diagnostics", {})
 
     charts = {}
 
     # ------------------------------------------------------------------
-    # Chart 1 (existing): Forecast comparison — all models + ensemble
+    # Chart 1: Forecast comparison — all models + ensemble
     # ------------------------------------------------------------------
     fig = go.Figure()
     colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd"]
@@ -153,29 +179,14 @@ def _generate_plotly_charts(sarimax_results: dict, base_data: list) -> dict:
         fig.add_trace(go.Scatter(x=dates, y=values, name="Ensemble",
                                   line=dict(color="black", width=3)))
     fig.update_layout(
-        title="Previsao ICMS-SP por Modelo",
-        xaxis_title="Data", yaxis_title="R$ bilhoes",
+        title="Previsão ICMS-SP por Modelo",
+        xaxis_title="Data", yaxis_title="R$ bilhões",
         template="plotly_white", height=500
     )
     charts["forecast_comparison"] = json.loads(json.dumps(fig.to_dict(), cls=PlotlyJSONEncoder))
 
     # ------------------------------------------------------------------
-    # Chart 2 (existing): AIC comparison bar chart
-    # ------------------------------------------------------------------
-    valid_diag = {n: d for n, d in diagnostics.items() if "aic" in d}
-    if valid_diag:
-        fig2 = go.Figure(data=[
-            go.Bar(x=list(valid_diag.keys()),
-                   y=[d["aic"] for d in valid_diag.values()],
-                   marker_color=["#2ca02c" if n == sarimax_results.get("best_model") else "#1f77b4"
-                                  for n in valid_diag.keys()])
-        ])
-        fig2.update_layout(title="AIC por Modelo (menor = melhor)",
-                           yaxis_title="AIC", template="plotly_white", height=400)
-        charts["aic_comparison"] = json.loads(json.dumps(fig2.to_dict(), cls=PlotlyJSONEncoder))
-
-    # ------------------------------------------------------------------
-    # Chart 3 (existing): Annual totals
+    # Chart 2: Annual totals
     # ------------------------------------------------------------------
     annual = sarimax_results.get("annual_totals", {})
     if annual.get("ensemble"):
@@ -185,15 +196,32 @@ def _generate_plotly_charts(sarimax_results: dict, base_data: list) -> dict:
                    text=[f"R$ {annual['ensemble'][y]:.1f}B" for y in years],
                    textposition="auto", marker_color="#1f77b4")
         ])
-        fig3.update_layout(title="Previsao Anual ICMS-SP (Ensemble)",
-                           yaxis_title="R$ bilhoes", template="plotly_white", height=400)
+        fig3.update_layout(title="Previsão Anual ICMS-SP (Ensemble)",
+                           yaxis_title="R$ bilhões", template="plotly_white", height=400)
         charts["annual_totals"] = json.loads(json.dumps(fig3.to_dict(), cls=PlotlyJSONEncoder))
 
     # ------------------------------------------------------------------
-    # Chart 4 (NEW): Fan chart with CI bands
+    # Chart 3: Fan chart with CI bands
     # ------------------------------------------------------------------
     ci_monthly = _extract_ci_monthly(sarimax_results)
     hist_df = _build_historical_series(base_data)
+
+    # Resolve best model label for fan chart
+    best_model = sarimax_results.get("best_model_mape") or sarimax_results.get("best_model") or "mediana"
+    best_mape = None
+    # Try to get MAPE from all_candidates or diagnostics
+    all_cands = _get_all_candidates(sarimax_results)
+    if best_model in all_cands:
+        best_mape = all_cands[best_model].get("mape")
+    if best_mape is None:
+        diagnostics = sarimax_results.get("diagnostics", {})
+        if best_model in diagnostics and isinstance(diagnostics[best_model], dict):
+            best_mape = diagnostics[best_model].get("mape")
+
+    if best_mape is not None:
+        forecast_label = f"Previsão — {best_model} (MAPE {best_mape:.1f}%)"
+    else:
+        forecast_label = f"Previsão — {best_model}"
 
     if ci_monthly:
         fig_fan = go.Figure()
@@ -236,10 +264,10 @@ def _generate_plotly_charts(sarimax_results: dict, base_data: list) -> dict:
             showlegend=True,
         ))
 
-        # Median line
+        # Forecast line (labeled with best model + MAPE)
         fig_fan.add_trace(go.Scatter(
             x=ci_dates, y=p50,
-            name="Previsao (mediana)",
+            name=forecast_label,
             line=dict(color="#E74C3C", width=2.5, dash="dash"),
         ))
 
@@ -253,15 +281,15 @@ def _generate_plotly_charts(sarimax_results: dict, base_data: list) -> dict:
             )
 
         fig_fan.update_layout(
-            title="ICMS-SP: Historico e Previsao com Intervalos de Confianca",
-            xaxis_title="Data", yaxis_title="R$ bilhoes",
+            title="ICMS-SP: Histórico e Previsão com Intervalos de Confiança",
+            xaxis_title="Data", yaxis_title="R$ bilhões",
             template="plotly_white", height=550,
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         )
         charts["fan_chart"] = json.loads(json.dumps(fig_fan.to_dict(), cls=PlotlyJSONEncoder))
 
     # ------------------------------------------------------------------
-    # Chart 5 (NEW): Annual totals with asymmetric error bars
+    # Chart 4: Annual totals with asymmetric error bars
     # ------------------------------------------------------------------
     if ci_monthly and annual.get("ensemble"):
         ci_df = pd.DataFrame(ci_monthly)
@@ -293,33 +321,40 @@ def _generate_plotly_charts(sarimax_results: dict, base_data: list) -> dict:
             )
         ])
         fig5.update_layout(
-            title="Totais Anuais com Intervalos de Confianca (IC 95%)",
-            yaxis_title="R$ bilhoes", template="plotly_white", height=450,
+            title="Totais Anuais com Intervalos de Confiança (IC 95%)",
+            yaxis_title="R$ bilhões", template="plotly_white", height=450,
         )
         charts["annual_totals_ci"] = json.loads(json.dumps(fig5.to_dict(), cls=PlotlyJSONEncoder))
 
     # ------------------------------------------------------------------
-    # Chart 6 (NEW): MAPE by model — horizontal bar, color-coded
+    # Chart 5: MAPE by model — ALL candidates (individual + ensemble)
     # ------------------------------------------------------------------
-    mape_data = {}
-    for model_name, diag in diagnostics.items():
-        if isinstance(diag, dict) and "mape" in diag:
-            mape_data[model_name] = diag["mape"]
+    all_candidates = _get_all_candidates(sarimax_results)
 
-    if mape_data:
-        sorted_models = sorted(mape_data.items(), key=lambda x: x[1])
-        model_names_sorted = [m[0] for m in sorted_models]
-        mape_values = [m[1] for m in sorted_models]
+    if all_candidates:
+        # Sort by MAPE ascending
+        sorted_cands = sorted(all_candidates.items(), key=lambda x: x[1]["mape"])
 
-        def _mape_color(v):
-            if v < 5:
-                return "#2ECC71"  # green
-            elif v < 10:
-                return "#F39C12"  # yellow/orange
+        # Cap at top 15 if too many for readability
+        if len(sorted_cands) > 15:
+            sorted_cands = sorted_cands[:15]
+
+        model_names_sorted = [m[0] for m in sorted_cands]
+        mape_values = [m[1]["mape"] for m in sorted_cands]
+        cand_types = [m[1].get("type", "individual") for m in sorted_cands]
+
+        # Color: green for best, blue for individual, orange for ensemble
+        best_name = model_names_sorted[0] if model_names_sorted else None
+
+        def _cand_color(name, ctype):
+            if name == best_name:
+                return "#2ECC71"  # green for best
+            elif ctype == "ensemble":
+                return "#F39C12"  # orange for ensemble
             else:
-                return "#E74C3C"  # red
+                return "#3498DB"  # blue for individual
 
-        bar_colors = [_mape_color(v) for v in mape_values]
+        bar_colors = [_cand_color(n, t) for n, t in zip(model_names_sorted, cand_types)]
 
         fig6 = go.Figure(data=[
             go.Bar(
@@ -337,48 +372,97 @@ def _generate_plotly_charts(sarimax_results: dict, base_data: list) -> dict:
                        annotation_text="10% (alerta)")
 
         fig6.update_layout(
-            title="MAPE por Modelo (Out-of-Sample)",
+            title="MAPE por Modelo — Todos os Candidatos (Out-of-Sample)",
             xaxis_title="MAPE (%)",
-            template="plotly_white", height=400,
+            template="plotly_white",
+            height=max(400, len(model_names_sorted) * 28 + 120),
             yaxis=dict(autorange="reversed"),
         )
         charts["mape_by_model"] = json.loads(json.dumps(fig6.to_dict(), cls=PlotlyJSONEncoder))
 
     # ------------------------------------------------------------------
-    # Chart 7 (NEW): Exogenous variables panel — 2x2 subplot
+    # Chart 6: Exogenous variables panel — 2x2 subplot
     # ------------------------------------------------------------------
     if not hist_df.empty:
         fig7 = make_subplots(
             rows=2, cols=2,
-            subplot_titles=("IBC-BR (Atividade Economica)", "IGP-DI (Inflacao)",
-                            "Dias Uteis por Mes", "Dummies Estruturais"),
+            subplot_titles=("IBC-BR (Atividade Econômica)", "IGP-DI (Inflação)",
+                            "Dias Úteis por Mês", "Dummies Estruturais"),
             vertical_spacing=0.12, horizontal_spacing=0.08,
         )
 
-        # IBC-BR
+        # Determine where projections start (last observed ICMS date)
+        last_obs_date = None
+        if "icms_sp" in hist_df.columns:
+            obs_mask = hist_df["icms_sp"].notna()
+            if obs_mask.any():
+                last_obs_date = hist_df.loc[obs_mask, "data"].max()
+
+        # IBC-BR: split observed vs projected
         if "ibc_br" in hist_df.columns:
             mask = hist_df["ibc_br"].notna()
-            fig7.add_trace(go.Scatter(
-                x=hist_df.loc[mask, "data"], y=hist_df.loc[mask, "ibc_br"],
-                name="IBC-BR", line=dict(color="#3498DB", width=2),
-                showlegend=False,
-            ), row=1, col=1)
+            ibc_data = hist_df.loc[mask].copy()
+            if last_obs_date is not None:
+                obs_part = ibc_data[ibc_data["data"] <= last_obs_date]
+                proj_part = ibc_data[ibc_data["data"] > last_obs_date]
+            else:
+                obs_part = ibc_data
+                proj_part = pd.DataFrame()
 
-        # IGP-DI
+            if not obs_part.empty:
+                fig7.add_trace(go.Scatter(
+                    x=obs_part["data"], y=obs_part["ibc_br"],
+                    name="IBC-BR (observado)", line=dict(color="#3498DB", width=2),
+                    showlegend=False,
+                ), row=1, col=1)
+            if not proj_part.empty:
+                # Connect projected to last observed point
+                if not obs_part.empty:
+                    bridge = pd.DataFrame([obs_part.iloc[-1]])
+                    proj_with_bridge = pd.concat([bridge, proj_part], ignore_index=True)
+                else:
+                    proj_with_bridge = proj_part
+                fig7.add_trace(go.Scatter(
+                    x=proj_with_bridge["data"], y=proj_with_bridge["ibc_br"],
+                    name="IBC-BR (projeção)", line=dict(color="#3498DB", width=2, dash="dash"),
+                    opacity=0.6, showlegend=False,
+                ), row=1, col=1)
+
+        # IGP-DI: split observed vs projected
         if "igp_di" in hist_df.columns:
             mask = hist_df["igp_di"].notna()
-            fig7.add_trace(go.Scatter(
-                x=hist_df.loc[mask, "data"], y=hist_df.loc[mask, "igp_di"],
-                name="IGP-DI", line=dict(color="#E74C3C", width=2),
-                showlegend=False,
-            ), row=1, col=2)
+            igp_data = hist_df.loc[mask].copy()
+            if last_obs_date is not None:
+                obs_part = igp_data[igp_data["data"] <= last_obs_date]
+                proj_part = igp_data[igp_data["data"] > last_obs_date]
+            else:
+                obs_part = igp_data
+                proj_part = pd.DataFrame()
 
-        # Dias uteis
+            if not obs_part.empty:
+                fig7.add_trace(go.Scatter(
+                    x=obs_part["data"], y=obs_part["igp_di"],
+                    name="IGP-DI (observado)", line=dict(color="#E74C3C", width=2),
+                    showlegend=False,
+                ), row=1, col=2)
+            if not proj_part.empty:
+                if not obs_part.empty:
+                    bridge = pd.DataFrame([obs_part.iloc[-1]])
+                    proj_with_bridge = pd.concat([bridge, proj_part], ignore_index=True)
+                else:
+                    proj_with_bridge = proj_part
+                fig7.add_trace(go.Scatter(
+                    x=proj_with_bridge["data"], y=proj_with_bridge["igp_di"],
+                    name="IGP-DI (projeção)", line=dict(color="#E74C3C", width=2, dash="dash"),
+                    opacity=0.6, showlegend=False,
+                ), row=1, col=2)
+
+        # Dias úteis
         if "dias_uteis" in hist_df.columns:
             mask = hist_df["dias_uteis"].notna()
             fig7.add_trace(go.Bar(
                 x=hist_df.loc[mask, "data"], y=hist_df.loc[mask, "dias_uteis"],
-                name="Dias uteis", marker_color="#2ECC71", opacity=0.7,
+                name="Dias úteis", marker_color="#2ECC71", opacity=0.7,
                 showlegend=False,
             ), row=2, col=1)
 
@@ -399,7 +483,7 @@ def _generate_plotly_charts(sarimax_results: dict, base_data: list) -> dict:
                 ), row=2, col=2)
 
         fig7.update_layout(
-            title="Variaveis Exogenas do Modelo",
+            title="Variáveis Exógenas do Modelo",
             template="plotly_white", height=700,
             legend=dict(orientation="h", yanchor="bottom", y=-0.12, xanchor="center", x=0.5),
         )
@@ -447,7 +531,7 @@ def _generate_static_charts(sarimax_results: dict, output_dir: Path, base_data: 
     charts_dir.mkdir(exist_ok=True)
 
     # ------------------------------------------------------------------
-    # Chart 1 (existing): Forecast comparison
+    # Chart 1: Forecast comparison
     # ------------------------------------------------------------------
     fig, ax = plt.subplots(figsize=(14, 6))
     for name, model_fc in forecasts.items():
@@ -460,8 +544,8 @@ def _generate_static_charts(sarimax_results: dict, output_dir: Path, base_data: 
         dates = pd.to_datetime([e["data"] for e in ensemble])
         values = [e["forecast"] / 1e9 for e in ensemble]
         ax.plot(dates, values, label="Ensemble", color="black", linewidth=2.5)
-    ax.set_title("Previsao ICMS-SP por Modelo", fontsize=14, fontweight="bold")
-    ax.set_ylabel("R$ bilhoes")
+    ax.set_title("Previsão ICMS-SP por Modelo", fontsize=14, fontweight="bold")
+    ax.set_ylabel("R$ bilhões")
     ax.legend(loc="upper left")
     plt.tight_layout()
     path = charts_dir / "forecast_comparison.png"
@@ -470,26 +554,9 @@ def _generate_static_charts(sarimax_results: dict, output_dir: Path, base_data: 
     charts["forecast_comparison"] = str(path)
 
     # ------------------------------------------------------------------
-    # Chart 2 (existing): AIC bar chart
+    # Chart 2: Diagnostic heatmap
     # ------------------------------------------------------------------
     valid_diag = {n: d for n, d in diagnostics.items() if "aic" in d}
-    if valid_diag:
-        fig, ax = plt.subplots(figsize=(10, 5))
-        names = list(valid_diag.keys())
-        aics = [d["aic"] for d in valid_diag.values()]
-        colors = ["#2ca02c" if n == sarimax_results.get("best_model") else "#4c72b0" for n in names]
-        ax.barh(names, aics, color=colors)
-        ax.set_xlabel("AIC")
-        ax.set_title("AIC por Modelo (menor = melhor)", fontsize=13, fontweight="bold")
-        plt.tight_layout()
-        path = charts_dir / "aic_comparison.png"
-        fig.savefig(path, dpi=300, bbox_inches="tight")
-        plt.close()
-        charts["aic_comparison"] = str(path)
-
-    # ------------------------------------------------------------------
-    # Chart 3 (existing): Diagnostic heatmap
-    # ------------------------------------------------------------------
     if valid_diag:
         fig, ax = plt.subplots(figsize=(8, 5))
         metrics = ["aic", "bic", "loglik", "ljung_box_p"]
@@ -499,7 +566,7 @@ def _generate_static_charts(sarimax_results: dict, output_dir: Path, base_data: 
             data.append(row)
         df_heat = pd.DataFrame(data, index=list(valid_diag.keys()), columns=["AIC", "BIC", "Log-Lik", "Ljung-Box p"])
         sns.heatmap(df_heat, annot=True, fmt=".1f", cmap="RdYlGn_r", ax=ax, linewidths=0.5)
-        ax.set_title("Diagnosticos por Modelo", fontsize=13, fontweight="bold")
+        ax.set_title("Diagnósticos por Modelo", fontsize=13, fontweight="bold")
         plt.tight_layout()
         path = charts_dir / "diagnostics_heatmap.png"
         fig.savefig(path, dpi=300, bbox_inches="tight")
@@ -507,12 +574,12 @@ def _generate_static_charts(sarimax_results: dict, output_dir: Path, base_data: 
         charts["diagnostics_heatmap"] = str(path)
 
     # ------------------------------------------------------------------
-    # Chart 4 (NEW): Residual diagnostics — 2x2 per best model
+    # Chart 3: Residual diagnostics — 2x2 per best model
     # ------------------------------------------------------------------
     charts.update(_generate_residual_diagnostics(sarimax_results, output_dir, charts_dir))
 
     # ------------------------------------------------------------------
-    # Chart 5 (NEW): Fan chart static version
+    # Chart 4: Fan chart static version
     # ------------------------------------------------------------------
     charts.update(_generate_fan_chart_static(sarimax_results, base_data, charts_dir))
 
@@ -603,7 +670,7 @@ def _generate_residual_diagnostics(sarimax_results: dict, output_dir: Path, char
         return charts
 
     fig, axes = plt.subplots(2, 2, figsize=(14, 10))
-    fig.suptitle(f"Diagnostico de Residuos — {best_model}", fontsize=16, fontweight="bold", y=1.02)
+    fig.suptitle(f"Diagnóstico de Resíduos — {best_model}", fontsize=16, fontweight="bold", y=1.02)
 
     # (0,0) Residual time series
     ax = axes[0, 0]
@@ -612,8 +679,8 @@ def _generate_residual_diagnostics(sarimax_results: dict, output_dir: Path, char
     ax.fill_between(resid.index,
                      -2 * resid.std(), 2 * resid.std(),
                      alpha=0.1, color="#3498DB", label="+/- 2 sigma")
-    ax.set_title("Serie de Residuos", fontweight="bold")
-    ax.set_ylabel("Residuo")
+    ax.set_title("Série de Resíduos", fontweight="bold")
+    ax.set_ylabel("Resíduo")
     ax.legend(loc="upper right", fontsize=9)
 
     # (0,1) Histogram + KDE
@@ -622,9 +689,9 @@ def _generate_residual_diagnostics(sarimax_results: dict, output_dir: Path, char
     # Overlay normal curve
     x_range = np.linspace(resid.min(), resid.max(), 200)
     ax.plot(x_range, sp_stats.norm.pdf(x_range, resid.mean(), resid.std()),
-            color="#E74C3C", linewidth=2, label="Normal teorica")
-    ax.set_title("Histograma dos Residuos", fontweight="bold")
-    ax.set_xlabel("Residuo")
+            color="#E74C3C", linewidth=2, label="Normal teórica")
+    ax.set_title("Histograma dos Resíduos", fontweight="bold")
+    ax.set_xlabel("Resíduo")
     ax.legend(fontsize=9)
 
     # (1,0) ACF
@@ -632,10 +699,10 @@ def _generate_residual_diagnostics(sarimax_results: dict, output_dir: Path, char
     try:
         plot_acf(resid, ax=ax, lags=min(36, len(resid) // 2 - 1),
                  alpha=0.05, zero=False, title="")
-        ax.set_title("Autocorrelacao (ACF)", fontweight="bold")
+        ax.set_title("Autocorrelação (ACF)", fontweight="bold")
         ax.set_xlabel("Lag")
     except Exception:
-        ax.text(0.5, 0.5, "ACF indisponivel", ha="center", va="center", transform=ax.transAxes)
+        ax.text(0.5, 0.5, "ACF indisponível", ha="center", va="center", transform=ax.transAxes)
 
     # (1,1) Q-Q plot
     ax = axes[1, 1]
@@ -648,7 +715,7 @@ def _generate_residual_diagnostics(sarimax_results: dict, output_dir: Path, char
         ax.get_lines()[1].set_color("#E74C3C")
         ax.get_lines()[1].set_linewidth(2)
     except Exception:
-        ax.text(0.5, 0.5, "Q-Q indisponivel", ha="center", va="center", transform=ax.transAxes)
+        ax.text(0.5, 0.5, "Q-Q indisponível", ha="center", va="center", transform=ax.transAxes)
 
     plt.tight_layout()
     path = charts_dir / "residual_diagnostics.png"
@@ -673,6 +740,22 @@ def _generate_fan_chart_static(sarimax_results: dict, base_data: list, charts_di
 
     hist_df = _build_historical_series(base_data)
 
+    # Resolve best model label
+    best_model = sarimax_results.get("best_model_mape") or sarimax_results.get("best_model") or "mediana"
+    best_mape = None
+    all_cands = _get_all_candidates(sarimax_results)
+    if best_model in all_cands:
+        best_mape = all_cands[best_model].get("mape")
+    if best_mape is None:
+        diagnostics = sarimax_results.get("diagnostics", {})
+        if best_model in diagnostics and isinstance(diagnostics[best_model], dict):
+            best_mape = diagnostics[best_model].get("mape")
+
+    if best_mape is not None:
+        forecast_label = f"Previsão — {best_model} (MAPE {best_mape:.1f}%)"
+    else:
+        forecast_label = f"Previsão — {best_model}"
+
     fig, ax = plt.subplots(figsize=(14, 7))
 
     # Historical series
@@ -695,20 +778,20 @@ def _generate_fan_chart_static(sarimax_results: dict, base_data: list, charts_di
     # 50% band (inner)
     ax.fill_between(ci_dates, p25, p75,
                      alpha=0.30, color="#1f77b4", label="IC 50%")
-    # Median line
+    # Forecast line
     ax.plot(ci_dates, p50, color="#E74C3C", linewidth=2.5, linestyle="--",
-            label="Previsao (mediana)")
+            label=forecast_label)
 
     # Vertical separator
     if not hist_df.empty and "icms_sp" in hist_df.columns:
         last_hist = hist_df.loc[hist_df["icms_sp"].notna(), "data"].max()
         ax.axvline(x=last_hist, color="#7F8C8D", linestyle=":", alpha=0.7,
-                   label="Inicio previsao")
+                   label="Início previsão")
 
-    ax.set_title("ICMS-SP: Historico e Previsao com Intervalos de Confianca",
+    ax.set_title("ICMS-SP: Histórico e Previsão com Intervalos de Confiança",
                  fontsize=14, fontweight="bold", pad=15)
     ax.set_xlabel("Data")
-    ax.set_ylabel("R$ bilhoes")
+    ax.set_ylabel("R$ bilhões")
     ax.legend(loc="upper left", frameon=True)
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
     ax.xaxis.set_major_locator(mdates.YearLocator())
