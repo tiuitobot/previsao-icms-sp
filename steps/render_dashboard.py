@@ -1377,8 +1377,10 @@ def main(*, output_dir: str = "", template_name: str = "", **kwargs) -> dict:
 
     plotly_charts = charts.get("plotly_charts", {})
 
-    # Change 4: Remove AIC bar chart
+    # Change 4: Remove AIC bar chart and annual totals charts
     plotly_charts.pop("aic_comparison", None)
+    plotly_charts.pop("annual_totals", None)
+    plotly_charts.pop("annual_totals_ci", None)
 
     # Change 6: Patch fan chart legend
     plotly_charts = _patch_fan_chart_legend(plotly_charts, sarimax)
@@ -1470,6 +1472,30 @@ def main(*, output_dir: str = "", template_name: str = "", **kwargs) -> dict:
     # MC paths per model — for client-side CI computation
     mc_annual_paths = sarimax.get("mc_annual_paths", {})
     mc_paths_json_str = json.dumps(mc_annual_paths, ensure_ascii=False)
+
+    # Monthly forecast data per individual model — for client-side chart updates
+    model_forecasts_js = {}
+    for m_name, m_fc in all_forecasts.items():
+        if isinstance(m_fc, list):
+            model_forecasts_js[m_name] = [
+                {"data": f["data"], "forecast": f["forecast"]} for f in m_fc
+            ]
+    model_forecasts_json_str = json.dumps(model_forecasts_js, ensure_ascii=False)
+
+    # Monthly CI data — for fan chart updates
+    ci_block = sarimax.get("confidence_intervals", {})
+    monthly_ci_raw = ci_block.get("intervals", [])
+    monthly_ci_js = []
+    for entry in monthly_ci_raw:
+        monthly_ci_js.append({
+            "data": entry.get("data", ""),
+            "p5": entry.get("p5", 0),
+            "p25": entry.get("p25", 0),
+            "p50": entry.get("p50", 0),
+            "p75": entry.get("p75", 0),
+            "p95": entry.get("p95", 0),
+        })
+    monthly_ci_json_str = json.dumps(monthly_ci_js, ensure_ascii=False)
 
     # Load Plotly JS inline (no CDN dependency)
     try:
@@ -1626,6 +1652,8 @@ def main(*, output_dir: str = "", template_name: str = "", **kwargs) -> dict:
     const CANDIDATES = {candidates_json_str};
     const BEST_MODEL = {json.dumps(best_model, ensure_ascii=False)};
     const MC_PATHS = {mc_paths_json_str};
+    const MODEL_FORECASTS = {model_forecasts_json_str};
+    const MONTHLY_CI = {monthly_ci_json_str};
 
     function fmtBrl(val) {{
         if (val == null || isNaN(val)) return "N/D";
@@ -1745,6 +1773,9 @@ def main(*, output_dir: str = "", template_name: str = "", **kwargs) -> dict:
             clearScenarios(c);
         }}
 
+        // Update Plotly charts
+        updateCharts(name);
+
         // Close dropdown
         document.getElementById("model-dropdown").style.display = "none";
     }}
@@ -1768,6 +1799,119 @@ def main(*, output_dir: str = "", template_name: str = "", **kwargs) -> dict:
             if (pessEl) {{ pessEl.textContent = "N/D"; flashEl(pessEl); }}
             if (baseEl) {{ baseEl.textContent = c.annual[year] != null ? fmtBrl(c.annual[year]) : "N/D"; flashEl(baseEl); }}
             if (optEl) {{ optEl.textContent = "N/D"; flashEl(optEl); }}
+        }}
+    }}
+
+    // --- Dynamic Plotly chart updates ---
+    function updateCharts(name) {{
+        var c = CANDIDATES[name];
+        if (!c) return;
+        updateForecastComparison(name, c);
+        updateFanChart(name, c);
+    }}
+
+    function updateForecastComparison(name, c) {{
+        var chartDiv = document.getElementById('forecast_comparison');
+        if (!chartDiv || !chartDiv.data) return;
+
+        // Reset all model traces to thin/muted, highlight selected
+        for (var i = 0; i < chartDiv.data.length; i++) {{
+            var trace = chartDiv.data[i];
+            if (trace.name && trace.name.startsWith('Modelo')) {{
+                var isComponent = c.components && c.components.indexOf(trace.name) >= 0;
+                var isSelected = (name === trace.name);
+                Plotly.restyle(chartDiv, {{
+                    'line.width': isSelected ? 3 : (isComponent ? 2 : 1),
+                    'opacity': isSelected ? 1.0 : (isComponent ? 0.8 : 0.3),
+                }}, [i]);
+            }}
+        }}
+
+        // If ensemble, add/update weighted forecast trace
+        if (c.type === 'ensemble' && c.components && c.components.length > 1) {{
+            var weights = c.weights || {{}};
+            var hasWeights = Object.keys(weights).length > 0;
+
+            // Compute weighted forecast from MODEL_FORECASTS
+            var firstComp = MODEL_FORECASTS[c.components[0]];
+            if (!firstComp) return;
+            var dates = firstComp.map(function(f) {{ return f.data; }});
+            var values = dates.map(function(d, idx) {{
+                var sum = 0;
+                for (var ci = 0; ci < c.components.length; ci++) {{
+                    var m = c.components[ci];
+                    var w = hasWeights ? (weights[m] || 0) : (1.0 / c.components.length);
+                    var mf = MODEL_FORECASTS[m];
+                    if (mf && mf[idx]) {{
+                        sum += w * mf[idx].forecast / 1e9;
+                    }}
+                }}
+                return sum;
+            }});
+
+            // Remove old ensemble trace if exists
+            var existingIdx = chartDiv.data.findIndex(function(t) {{ return t.name && t.name.indexOf('\u2192') === 0; }});
+            if (existingIdx >= 0) {{
+                Plotly.deleteTraces(chartDiv, existingIdx);
+            }}
+
+            // Add new ensemble trace
+            Plotly.addTraces(chartDiv, {{
+                x: dates,
+                y: values,
+                name: '\u2192 ' + name,
+                line: {{color: 'black', width: 3}},
+                mode: 'lines',
+            }});
+        }} else {{
+            // Remove ensemble trace if switching to individual
+            var existingIdx = chartDiv.data.findIndex(function(t) {{ return t.name && t.name.indexOf('\u2192') === 0; }});
+            if (existingIdx >= 0) {{
+                Plotly.deleteTraces(chartDiv, existingIdx);
+            }}
+        }}
+
+        // Update chart title
+        Plotly.relayout(chartDiv, {{
+            'title': 'Previs\u00e3o ICMS-SP por Modelo \u2014 ' + name
+        }});
+    }}
+
+    function updateFanChart(name, c) {{
+        var chartDiv = document.getElementById('fan_chart');
+        if (!chartDiv || !chartDiv.data) return;
+
+        // Find the forecast line trace (the dashed red line, not fill traces)
+        for (var i = 0; i < chartDiv.data.length; i++) {{
+            var trace = chartDiv.data[i];
+            if (trace.name && trace.name.indexOf('Previs') >= 0) {{
+                // Update label
+                var mapeStr = c.mape != null ? c.mape.toFixed(2) + '%' : 'N/D';
+                Plotly.restyle(chartDiv, {{'name': 'Previs\u00e3o \u2014 ' + name + ' (MAPE ' + mapeStr + ')'}}, [i]);
+
+                // Update forecast values for selected candidate
+                if (c.components && c.components.length > 0) {{
+                    var firstComp = MODEL_FORECASTS[c.components[0]];
+                    if (!firstComp) break;
+                    var dates = firstComp.map(function(f) {{ return f.data; }});
+                    var weights = c.weights || {{}};
+                    var hasWeights = Object.keys(weights).length > 0;
+                    var values = dates.map(function(d, idx) {{
+                        var sum = 0;
+                        for (var ci = 0; ci < c.components.length; ci++) {{
+                            var m = c.components[ci];
+                            var w = hasWeights ? (weights[m] || 0) : (1.0 / c.components.length);
+                            var mf = MODEL_FORECASTS[m];
+                            if (mf && mf[idx]) {{
+                                sum += w * mf[idx].forecast / 1e9;
+                            }}
+                        }}
+                        return sum;
+                    }});
+                    Plotly.restyle(chartDiv, {{'y': [values]}}, [i]);
+                }}
+                break;
+            }}
         }}
     }}
 
