@@ -189,12 +189,36 @@ def _run_oos_validation(train_df, y_full, spec):
         return {"status": "error", "mape": None, "error": str(exc)}
 
 
+def _compute_inverse_mse_weights(component_preds, y_test_real):
+    """Compute inverse-MSE weights for forecast combination.
+
+    w_i = (1/MSE_i) / sum(1/MSE_j)
+
+    Reference: Bates & Granger (1969), "The Combination of Forecasts",
+    Operational Research Quarterly, 20(4), 451-468.
+    Used by: BCB, Fed, ECB, Bank of England for macro forecast combination.
+    See also: Timmermann (2006), "Forecast Combinations", Handbook of
+    Economic Forecasting, Vol. 1, Ch. 4.
+    """
+    mses = []
+    for pred in component_preds:
+        mse = float(np.mean((y_test_real - pred) ** 2))
+        mses.append(max(mse, 1e-10))  # avoid division by zero
+
+    inv_mses = [1.0 / mse for mse in mses]
+    total = sum(inv_mses)
+    weights = [w / total for w in inv_mses]
+    return weights, mses
+
+
 def _run_ensemble_oos_validation(train_df, y_full, component_specs):
-    """Post-dummy OOS validation for an ensemble.
+    """Post-dummy OOS validation for an ensemble with inverse-MSE weighting.
 
     Same window as individual models: train up to LAST_DUMMY_END,
-    test on everything after. Fits all components, averages forecasts,
+    test on everything after. Fits all components, weights by inverse MSE,
     then computes accumulated MAPE.
+
+    Returns dict with MAPE and weights (or None on failure).
     """
     dummy_end = pd.Timestamp(LAST_DUMMY_END)
 
@@ -212,6 +236,7 @@ def _run_ensemble_oos_validation(train_df, y_full, component_specs):
     y_test_real = test_subset["icms_sp"].astype(float).values
 
     component_preds = []
+    component_names = []
     for spec_name, spec in component_specs.items():
         try:
             X_train = train_subset[spec["exog_cols"]].astype(float)
@@ -220,17 +245,28 @@ def _run_ensemble_oos_validation(train_df, y_full, component_specs):
             pred = fitted.get_forecast(steps=n_test, exog=X_test)
             pred_real = np.exp(pred.predicted_mean).values
             component_preds.append(pred_real)
+            component_names.append(spec_name)
         except Exception:
             continue
 
     if not component_preds:
         return None
 
-    avg_pred = np.mean(component_preds, axis=0)
+    # Inverse-MSE weighted combination (Bates & Granger, 1969)
+    weights, mses = _compute_inverse_mse_weights(component_preds, y_test_real)
+    weighted_pred = np.zeros_like(component_preds[0])
+    for w, pred in zip(weights, component_preds):
+        weighted_pred += w * pred
+
     sum_real = float(np.sum(y_test_real))
-    sum_pred = float(np.sum(avg_pred))
+    sum_pred = float(np.sum(weighted_pred))
     mape = abs((sum_real - sum_pred) / sum_real) * 100 if sum_real != 0 else None
-    return round(mape, 2) if mape is not None else None
+
+    return {
+        "mape": round(mape, 2) if mape is not None else None,
+        "weights": {n: round(w, 4) for n, w in zip(component_names, weights)},
+        "method": "inverse_mse",
+    }
 
 
 def _load(od: Path, name: str) -> dict:
@@ -413,13 +449,21 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
                 m.replace("Modelo ", "M") for m in combo
             ) + ")"
             component_specs = {m: MODEL_SPECS[m] for m in combo}
-            ensemble_mape = _run_ensemble_oos_validation(
+            oos_result = _run_ensemble_oos_validation(
                 train_df, y, component_specs
             )
+            if isinstance(oos_result, dict):
+                ensemble_mape = oos_result.get("mape")
+                ensemble_weights = oos_result.get("weights", {})
+            else:
+                ensemble_mape = oos_result
+                ensemble_weights = {}
             all_candidates[combo_name] = {
                 "mape": ensemble_mape,
                 "type": "ensemble",
                 "components": list(combo),
+                "weights": ensemble_weights,
+                "weighting_method": "inverse_mse",
             }
 
     # Find best candidate overall (lowest MAPE)
@@ -446,19 +490,49 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
         {"name": name, **info} for name, info in top5_ensembles
     ]
 
-    # Ensemble mean (point forecasts — backward compat, uses all valid models)
+    # Ensemble forecasts — inverse-MSE weighted if best is ensemble, else equal weight
     ensemble = []
+    best_weights = {}
+    if best_candidate_name and best_candidate_name in all_candidates:
+        best_info = all_candidates[best_candidate_name]
+        if best_info.get("weights"):
+            best_weights = best_info["weights"]
+
     if valid_models:
         n_periods = len(forecasts_output[valid_models[0]])
         for i in range(n_periods):
-            values = [forecasts_output[m][i]["forecast"] for m in valid_models]
             date = forecasts_output[valid_models[0]][i]["data"]
-            ensemble.append({
-                "data": date,
-                "forecast": round(_to_python(np.mean(values)), 2),
-                "min": round(_to_python(np.min(values)), 2),
-                "max": round(_to_python(np.max(values)), 2),
-            })
+            if best_weights:
+                # Weighted ensemble using inverse-MSE weights
+                weighted_val = sum(
+                    best_weights.get(m, 0) * forecasts_output[m][i]["forecast"]
+                    for m in best_weights if m in forecasts_output
+                )
+                all_vals = [forecasts_output[m][i]["forecast"] for m in valid_models]
+                ensemble.append({
+                    "data": date,
+                    "forecast": round(_to_python(weighted_val), 2),
+                    "min": round(_to_python(np.min(all_vals)), 2),
+                    "max": round(_to_python(np.max(all_vals)), 2),
+                })
+            else:
+                # Equal weight (fallback)
+                values = [forecasts_output[m][i]["forecast"] for m in valid_models]
+                ensemble.append({
+                    "data": date,
+                    "forecast": round(_to_python(np.mean(values)), 2),
+                    "min": round(_to_python(np.min(values)), 2),
+                    "max": round(_to_python(np.max(values)), 2),
+                })
+
+    # Also apply weights to Monte Carlo paths
+    ensemble_weighting = {
+        "method": "inverse_mse" if best_weights else "equal_weight",
+        "weights": best_weights if best_weights else {m: round(1/len(valid_models), 4) for m in valid_models},
+        "reference": "Bates & Granger (1969). The Combination of Forecasts. Operational Research Quarterly, 20(4), 451-468.",
+        "note": "Pesos inverse-MSE: w_i = (1/MSE_i) / Σ(1/MSE_j). Método padrão em bancos centrais (BCB, Fed, ECB, BoE). "
+                "Ver também: Timmermann (2006), Forecast Combinations, Handbook of Economic Forecasting.",
+    }
 
     # =========================================================================
     # Monte Carlo ensemble: use best candidate's components
@@ -474,9 +548,14 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
 
     if mc_models_used:
         # Stack: shape [n_models, N_SIMULATIONS, n_future]
-        # Then mean across models → [N_SIMULATIONS, n_future] (ensemble paths)
         stacked = np.stack([mc_simulations[n] for n in mc_models_used], axis=0)
-        mc_ensemble_paths = np.mean(stacked, axis=0)  # [N_SIMULATIONS, n_future]
+        # Apply inverse-MSE weights (or equal weight) across models
+        if best_weights and all(n in best_weights for n in mc_models_used):
+            mc_weights = np.array([best_weights[n] for n in mc_models_used])
+            mc_weights = mc_weights / mc_weights.sum()  # normalize
+            mc_ensemble_paths = np.tensordot(mc_weights, stacked, axes=([0], [0]))
+        else:
+            mc_ensemble_paths = np.mean(stacked, axis=0)  # equal weight fallback
 
         # Monthly percentile CIs from ensemble paths
         future_dates = future_df["data"].dt.strftime("%Y-%m-%d").tolist()
@@ -569,6 +648,7 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
         "best_model_mape": best_candidate_mape,
         "all_candidates": all_candidates,
         "top5_ensembles": top5_ensembles,
+        "ensemble_weighting": ensemble_weighting,
         "forecast_horizon": {
             "last_icms_observation": last_icms_date.strftime("%Y-%m-%d"),
             "forecast_start": forecast_start.strftime("%Y-%m-%d"),
