@@ -1709,7 +1709,7 @@ def main(*, output_dir: str = "", template_name: str = "", **kwargs) -> dict:
             var typeCls = e.data.type === "individual" ? "opt-type-individual" : "opt-type-ensemble";
             var typeLabel = e.data.type === "individual" ? "individual" : "ensemble";
             var mapeStr = e.data.mape != null ? e.data.mape.toFixed(2) + "%" : "—";
-            html += '<div class="model-option' + isBest + '" onclick="selectCandidate(\'' + e.name.replace(/'/g, "\\\\'") + '\')">';
+            html += '<div class="model-option' + isBest + '" onclick="selectCandidate(&quot;' + e.name + '&quot;)">';
             html += '<span class="opt-name">' + e.name + '</span>';
             html += '<span class="opt-type ' + typeCls + '">' + typeLabel + '</span>';
             html += '<span class="opt-mape">' + mapeStr + '</span>';
