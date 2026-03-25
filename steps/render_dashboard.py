@@ -563,121 +563,83 @@ def _build_validation_card(validation: dict) -> str:
 
 
 def _build_predictions_table(sarimax: dict) -> str:
-    """Predictions table with individual models and ensemble combinations."""
+    """Predictions table using all_candidates as single source of truth."""
+    all_candidates = sarimax.get("all_candidates", {})
     diagnostics = sarimax.get("diagnostics", {})
     annual_totals = sarimax.get("annual_totals", {})
     best_model = sarimax.get("best_model", "")
-    best_mape_model = sarimax.get("best_model_mape", "")
 
-    if not diagnostics:
+    if not all_candidates:
         return ""
 
-    model_names = sorted(diagnostics.keys())
-    years = sorted(annual_totals.get("ensemble", {}).keys())
+    # Determine years from annual_totals (exclude MC entries)
+    years = sorted(set(
+        y for k, v in annual_totals.items()
+        if not k.endswith("_mc") and isinstance(v, dict)
+        for y in v.keys()
+        if all(isinstance(vv, (int, float)) for vv in v.values())
+    ))
 
-    # Build candidates list: individual models + ensemble combinations
-    candidates = []
+    # Sort all candidates by MAPE
+    sorted_candidates = sorted(
+        all_candidates.items(),
+        key=lambda x: x[1].get("mape", 999) if x[1].get("mape") is not None else 999
+    )
 
-    # 1. Individual models
-    for name in model_names:
-        diag = diagnostics[name]
-        if "error" in diag:
-            continue
-        annual = {}
-        for year in years:
-            annual[year] = annual_totals.get(name, {}).get(year, 0)
-        candidates.append({
-            "name": name,
-            "description": diag.get("description", ""),
-            "mape": diag.get("mape"),
-            "aic": diag.get("aic"),
-            "annual": annual,
-            "type": "individual",
-        })
-
-    # 2. Full ensemble (all models)
-    ens_annual = {}
-    for year in years:
-        ens_annual[year] = annual_totals.get("ensemble", {}).get(year, 0)
-    candidates.append({
-        "name": f"Ensemble({', '.join(m.replace('Modelo ', 'M') for m in model_names)})",
-        "description": f"Média de {len(model_names)} modelos",
-        "mape": None,
-        "aic": None,
-        "annual": ens_annual,
-        "type": "ensemble",
-    })
-
-    # 3. Ensemble combinations (top ensembles by estimated spread)
-    # Generate all combinations of 2+ models and compute average annual
-    from itertools import combinations
-    ensemble_candidates = []
-    for size in range(2, len(model_names)):
-        for combo in combinations(model_names, size):
-            combo_annual = {}
-            combo_mapes = []
-            for year in years:
-                vals = [annual_totals.get(m, {}).get(year, 0) for m in combo]
-                combo_annual[year] = sum(vals) / len(vals) if vals else 0
-            for m in combo:
-                m_mape = diagnostics.get(m, {}).get("mape")
-                if m_mape is not None:
-                    combo_mapes.append(m_mape)
-            avg_mape = sum(combo_mapes) / len(combo_mapes) if combo_mapes else None
-            short_names = [m.replace("Modelo ", "M") for m in combo]
-            ensemble_candidates.append({
-                "name": f"Ensemble({', '.join(short_names)})",
-                "description": f"Média de {len(combo)} modelos",
-                "mape": avg_mape,
-                "aic": None,
-                "annual": combo_annual,
-                "type": "ensemble_combo",
-            })
-
-    # Sort ensemble combos by MAPE and take top 5
-    ensemble_candidates.sort(key=lambda x: x["mape"] if x["mape"] is not None else 999)
-    candidates.extend(ensemble_candidates[:5])
-
-    # Determine best candidate (lowest MAPE)
-    best_candidate_name = None
-    best_candidate_mape = 999
-    for c in candidates:
-        if c["mape"] is not None and c["mape"] < best_candidate_mape:
-            best_candidate_mape = c["mape"]
-            best_candidate_name = c["name"]
-
-    # Build table
+    # Build table rows
     year_headers = "".join(f"<th>{y}</th>" for y in years)
     rows = ""
-    for c in candidates:
-        mape_display = f"{c['mape']:.2f}%" if c["mape"] is not None else "—"
-        aic_display = f"{c['aic']:.1f}" if c["aic"] is not None else "—"
-        is_best = c["name"] == best_candidate_name
+    for name, info in sorted_candidates:
+        mape = info.get("mape")
+        mape_display = f"{mape:.2f}%" if mape is not None else "—"
+        is_best = name == best_model
         row_class = "best-model-row" if is_best else ""
         best_tag = ' <span class="best-tag">MELHOR</span>' if is_best else ""
-        type_badge = {
-            "individual": '<span class="type-badge type-individual">Individual</span>',
-            "ensemble": '<span class="type-badge type-ensemble">Ensemble</span>',
-            "ensemble_combo": '<span class="type-badge type-ensemble">Ensemble</span>',
-        }.get(c["type"], "")
+        ctype = info.get("type", "")
+        type_badge = (
+            '<span class="type-badge type-individual">Individual</span>'
+            if ctype == "individual"
+            else '<span class="type-badge type-ensemble">Ensemble</span>'
+        )
 
+        # Weights description
+        weights = info.get("weights", {})
+        if weights:
+            w_parts = [f"{k.replace('Modelo ', 'M')}:{v:.0%}" for k, v in weights.items()]
+            desc = f"Pesos: {', '.join(w_parts)}"
+        else:
+            diag = diagnostics.get(name, {})
+            desc = diag.get("description", "")
+
+        # Annual values: use annual_totals for individual, compute weighted for ensembles
         annual_cells = ""
         for year in years:
-            val = c["annual"].get(year, 0)
+            if ctype == "individual":
+                val = annual_totals.get(name, {}).get(year, 0)
+            else:
+                # Weighted sum from components
+                components = info.get("components", [])
+                if weights:
+                    val = sum(
+                        weights.get(m, 0) * annual_totals.get(m, {}).get(year, 0)
+                        for m in components
+                    )
+                else:
+                    comp_vals = [annual_totals.get(m, {}).get(year, 0) for m in components]
+                    val = sum(comp_vals) / len(comp_vals) if comp_vals else 0
             annual_cells += f'<td class="number">{_fmt_brl(val)}</td>'
 
         rows += f"""<tr class="{row_class}">
-            <td>{c['name']}{best_tag}<br><small class="desc-text">{c['description']}</small></td>
+            <td>{name}{best_tag}<br><small class="desc-text">{desc}</small></td>
             <td>{type_badge}</td>
             <td class="number">{mape_display}</td>
-            <td class="number">{aic_display}</td>
             {annual_cells}
         </tr>"""
 
     return f"""
     <section>
         <h2>Previsões — Todos os Candidatos</h2>
-        <p class="section-desc">Modelos individuais, ensemble completo e top 5 combinações por MAPE estimado.</p>
+        <p class="section-desc">31 candidatos (5 individuais + 26 ensembles inverse-MSE) ordenados por MAPE acumulado pós-dummies.</p>
         <div class="table-scroll">
             <table class="data-table predictions-table">
                 <thead>
@@ -685,7 +647,6 @@ def _build_predictions_table(sarimax: dict) -> str:
                         <th>Candidato</th>
                         <th>Tipo</th>
                         <th>MAPE</th>
-                        <th>AIC</th>
                         {year_headers}
                     </tr>
                 </thead>
@@ -814,8 +775,10 @@ def _build_methodology_section(sarimax: dict) -> str:
                    &mdash; {"Série estacionária" if adf.get('stationary') else "Não-estacionária"}.</p>
 
                 <h3>Seleção do Melhor Modelo</h3>
-                <p>O modelo com menor AIC (Akaike Information Criterion) foi selecionado como referência para os intervalos de confiança.
-                   A previsão pontual utiliza o <em>ensemble</em> (média aritmética de todos os modelos válidos).</p>
+                <p>O melhor candidato é selecionado pelo menor MAPE acumulado (Mean Absolute Percentage Error) em janela
+                   out-of-sample pós-dummies estruturais. São avaliados 31 candidatos: 5 modelos individuais + 26 ensembles
+                   (todas as combinações de 2, 3, 4 e 5 modelos). Ensembles utilizam pesos inverse-MSE
+                   (Bates &amp; Granger, 1969), método padrão em bancos centrais (BCB, Fed, ECB, BoE).</p>
 
                 <h3>Intervalos de Confiança</h3>
                 <p>IC 95% derivados do modelo <strong>{ci_model}</strong> via previsão fora da amostra (<code>get_forecast</code>).
@@ -1425,8 +1388,10 @@ def main(*, output_dir: str = "", template_name: str = "", **kwargs) -> dict:
 
     annual_totals = sarimax.get("annual_totals", {}).get("ensemble", {})
     best_model = sarimax.get("best_model", "N/A")
+    best_candidate_mape = sarimax.get("best_model_mape", "N/A")
+    if isinstance(best_candidate_mape, (int, float)):
+        best_candidate_mape = f"{best_candidate_mape:.2f}"
     diagnostics = sarimax.get("diagnostics", {})
-    best_aic = diagnostics.get(best_model, {}).get("aic", "N/A") if best_model != "N/A" else "N/A"
     n_models = sarimax.get("n_models_fitted", 0)
 
     # --- Build CANDIDATES JS data for interactive selector ---
@@ -1542,7 +1507,7 @@ def main(*, output_dir: str = "", template_name: str = "", **kwargs) -> dict:
         if bm_mape is not None:
             best_mape_display = f"MAPE {bm_mape:.2f}%"
     if not best_mape_display:
-        best_mape_display = f"AIC: {best_aic}"
+        best_mape_display = f"MAPE: N/D"
 
     kpi_html += f"""
     <div class="kpi-card model-selector" onclick="toggleModelDropdown()">
@@ -1610,7 +1575,7 @@ def main(*, output_dir: str = "", template_name: str = "", **kwargs) -> dict:
         <div class="header-meta">
             <span>Gerado em: {now_str}</span>
             <span>{n_models} modelos SARIMAX</span>
-            <span>Melhor: {best_model} (AIC {best_aic})</span>
+            <span>Melhor: {best_model} (MAPE {best_candidate_mape}%)</span>
         </div>
     </header>
 
