@@ -1502,6 +1502,10 @@ def main(*, output_dir: str = "", template_name: str = "", **kwargs) -> dict:
 
     candidates_json_str = json.dumps(candidates_js, ensure_ascii=False, indent=2)
 
+    # MC paths per model — for client-side CI computation
+    mc_annual_paths = sarimax.get("mc_annual_paths", {})
+    mc_paths_json_str = json.dumps(mc_annual_paths, ensure_ascii=False)
+
     # Load Plotly JS inline (no CDN dependency)
     try:
         import plotly
@@ -1656,6 +1660,7 @@ def main(*, output_dir: str = "", template_name: str = "", **kwargs) -> dict:
     // --- Model/Ensemble Selector ---
     const CANDIDATES = {candidates_json_str};
     const BEST_MODEL = {json.dumps(best_model, ensure_ascii=False)};
+    const MC_PATHS = {mc_paths_json_str};
 
     function fmtBrl(val) {{
         if (val == null || isNaN(val)) return "N/D";
@@ -1739,36 +1744,65 @@ def main(*, output_dir: str = "", template_name: str = "", **kwargs) -> dict:
             }}
         }}
 
-        // Update scenario cards
-        updateScenarios(c);
+        // Compute CI from MC paths for this candidate's components
+        var components = c.components || [];
+        var weights = c.weights || {{}};
+        var hasWeights = Object.keys(weights).length > 0;
+
+        // Check if all components have MC paths
+        var allHavePaths = components.length > 0 && components.every(function(m) {{ return MC_PATHS[m]; }});
+
+        if (allHavePaths) {{
+            var years = Object.keys(MC_PATHS[components[0]]);
+            for (var yi = 0; yi < years.length; yi++) {{
+                var year = years[yi];
+                var nSim = MC_PATHS[components[0]][year].length;
+                var ensembleSums = new Array(nSim).fill(0);
+
+                for (var ci = 0; ci < components.length; ci++) {{
+                    var m = components[ci];
+                    var w = hasWeights ? (weights[m] || 0) : (1.0 / components.length);
+                    var paths = MC_PATHS[m][year];
+                    for (var si = 0; si < nSim; si++) {{
+                        ensembleSums[si] += w * paths[si];
+                    }}
+                }}
+
+                // Sort and get percentiles
+                ensembleSums.sort(function(a, b) {{ return a - b; }});
+                var p5 = ensembleSums[Math.floor(nSim * 0.05)];
+                var p50 = ensembleSums[Math.floor(nSim * 0.50)];
+                var p95 = ensembleSums[Math.floor(nSim * 0.95)];
+
+                updateScenarioYear(year, p5, p50, p95);
+            }}
+        }} else {{
+            clearScenarios(c);
+        }}
 
         // Close dropdown
         document.getElementById("model-dropdown").style.display = "none";
     }}
 
-    function updateScenarios(c) {{
-        if (c.annual_ci) {{
-            for (var year in c.annual_ci) {{
-                var ci = c.annual_ci[year];
-                var pessEl = document.getElementById("scenario-pessimistic-" + year);
-                var baseEl = document.getElementById("scenario-base-" + year);
-                var optEl = document.getElementById("scenario-optimistic-" + year);
-                if (pessEl) {{ pessEl.textContent = fmtBrl(ci.low_95); flashEl(pessEl); }}
-                if (baseEl) {{ baseEl.textContent = fmtBrl(ci.median); flashEl(baseEl); }}
-                if (optEl) {{ optEl.textContent = fmtBrl(ci.high_95); flashEl(optEl); }}
-            }}
-        }} else {{
-            // No MC CI data for this candidate
-            var years = Object.keys(c.annual);
-            for (var i = 0; i < years.length; i++) {{
-                var year = years[i];
-                var pessEl = document.getElementById("scenario-pessimistic-" + year);
-                var baseEl = document.getElementById("scenario-base-" + year);
-                var optEl = document.getElementById("scenario-optimistic-" + year);
-                if (pessEl) {{ pessEl.textContent = "N/D"; flashEl(pessEl); }}
-                if (baseEl) {{ baseEl.textContent = fmtBrl(c.annual[year]); flashEl(baseEl); }}
-                if (optEl) {{ optEl.textContent = "N/D"; flashEl(optEl); }}
-            }}
+    function updateScenarioYear(year, p5, p50, p95) {{
+        var pessEl = document.getElementById("scenario-pessimistic-" + year);
+        var baseEl = document.getElementById("scenario-base-" + year);
+        var optEl = document.getElementById("scenario-optimistic-" + year);
+        if (pessEl) {{ pessEl.textContent = fmtBrl(p5); flashEl(pessEl); }}
+        if (baseEl) {{ baseEl.textContent = fmtBrl(p50); flashEl(baseEl); }}
+        if (optEl) {{ optEl.textContent = fmtBrl(p95); flashEl(optEl); }}
+    }}
+
+    function clearScenarios(c) {{
+        var years = c && c.annual ? Object.keys(c.annual) : [];
+        for (var i = 0; i < years.length; i++) {{
+            var year = years[i];
+            var pessEl = document.getElementById("scenario-pessimistic-" + year);
+            var baseEl = document.getElementById("scenario-base-" + year);
+            var optEl = document.getElementById("scenario-optimistic-" + year);
+            if (pessEl) {{ pessEl.textContent = "N/D"; flashEl(pessEl); }}
+            if (baseEl) {{ baseEl.textContent = c.annual[year] != null ? fmtBrl(c.annual[year]) : "N/D"; flashEl(baseEl); }}
+            if (optEl) {{ optEl.textContent = "N/D"; flashEl(optEl); }}
         }}
     }}
 
