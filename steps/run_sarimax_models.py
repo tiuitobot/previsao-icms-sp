@@ -130,64 +130,6 @@ def _run_monte_carlo(fitted_result, n_steps, exog_future, n_simulations=N_SIMULA
         return None
 
 
-def _run_oos_validation(train_df, y_full, spec):
-    """Post-dummy OOS validation.
-
-    Trains on data up to LAST_DUMMY_END, tests on everything after.
-    This ensures all structural dummy coefficients are estimated.
-    The window size grows as more ICMS data becomes available.
-
-    With ICMS until jan/2024: test = jun/2023 to jan/2024 (8 months)
-    With ICMS until fev/2026: test = jun/2023 to fev/2026 (33 months)
-    """
-    dummy_end = pd.Timestamp(LAST_DUMMY_END)
-
-    # Train up to dummy_end (inclusive)
-    train_mask = train_df["data"] <= dummy_end
-    test_mask = train_df["data"] > dummy_end
-
-    train_subset = train_df[train_mask].copy()
-    test_subset = train_df[test_mask].copy()
-
-    n_test = len(test_subset)
-    if n_test < OOS_MIN_POST_DUMMY_MONTHS:
-        return {"status": "insufficient_post_dummy_data", "mape": None,
-                "n_test_months": n_test, "dummy_end": LAST_DUMMY_END}
-
-    y_train = y_full[train_mask].copy()
-    y_test_real = test_subset["icms_sp"].astype(float).values
-
-    try:
-        X_train = train_subset[spec["exog_cols"]].astype(float)
-        X_test = test_subset[spec["exog_cols"]].astype(float)
-
-        fitted = _fit_model(y_train, X_train, spec["order"], spec["seasonal_order"])
-        pred = fitted.get_forecast(steps=n_test, exog=X_test)
-        pred_real = np.exp(pred.predicted_mean).values
-
-        sum_real = float(np.sum(y_test_real))
-        sum_pred = float(np.sum(pred_real))
-        mape_accumulated = abs((sum_real - sum_pred) / sum_real) * 100 if sum_real != 0 else None
-        mape_monthly = float(np.mean(np.abs((y_test_real - pred_real) / y_test_real)) * 100)
-
-        return {
-            "status": "ok",
-            "mape": round(mape_accumulated, 2) if mape_accumulated is not None else None,
-            "mape_accumulated": round(mape_accumulated, 2) if mape_accumulated is not None else None,
-            "mape_monthly": round(mape_monthly, 2),
-            "n_test_months": n_test,
-            "train_end": dummy_end.strftime("%Y-%m-%d"),
-            "test_start": test_subset["data"].iloc[0].strftime("%Y-%m-%d"),
-            "test_end": test_subset["data"].iloc[-1].strftime("%Y-%m-%d"),
-            "sum_real_brl": round(sum_real / 1e9, 2),
-            "sum_pred_brl": round(sum_pred / 1e9, 2),
-            "dummy_end": LAST_DUMMY_END,
-            "note": f"Janela pós-dummies: treino até {LAST_DUMMY_END}, teste {n_test} meses. "
-                    f"Todas as dummies estruturais estão estimadas no treino.",
-        }
-    except Exception as exc:
-        return {"status": "error", "mape": None, "error": str(exc)}
-
 
 def _compute_inverse_mse_weights(component_preds, y_test_real):
     """Compute inverse-MSE weights for forecast combination.
@@ -211,60 +153,149 @@ def _compute_inverse_mse_weights(component_preds, y_test_real):
     return weights, mses
 
 
-def _run_ensemble_oos_validation(train_df, y_full, component_specs):
-    """Post-dummy OOS validation for an ensemble with inverse-MSE weighting.
+def _run_all_expanding_windows(train_df, y_full, model_specs):
+    """Run expanding-window OOS for ALL individual models in a single pass.
 
-    Same window as individual models: train up to LAST_DUMMY_END,
-    test on everything after. Fits all components, weights by inverse MSE,
-    then computes accumulated MAPE.
+    Returns a dict keyed by model name, each containing:
+      - predictions: dict of cutoff_date -> predicted array (12m, real scale)
+      - actuals: dict of cutoff_date -> actual array (12m, real scale)
+      - window_mapes: list of per-window 12m accumulated MAPE
+      - cutoff_dates: list of cutoff date strings
 
-    Returns dict with MAPE and weights (or None on failure).
+    This avoids re-fitting when computing ensemble MAPEs: just combine
+    the individual predictions with inverse-MSE weights.
     """
+    OOS_HORIZON = 12
     dummy_end = pd.Timestamp(LAST_DUMMY_END)
+    last_obs = train_df["data"].max()
 
-    train_mask = train_df["data"] <= dummy_end
-    test_mask = train_df["data"] > dummy_end
-
-    train_subset = train_df[train_mask].copy()
-    test_subset = train_df[test_mask].copy()
-
-    n_test = len(test_subset)
-    if n_test < OOS_MIN_POST_DUMMY_MONTHS:
+    latest_cutoff = last_obs - pd.DateOffset(months=OOS_HORIZON)
+    if latest_cutoff <= dummy_end:
         return None
 
-    y_train = y_full[train_mask].copy()
-    y_test_real = test_subset["icms_sp"].astype(float).values
+    cutoff_dates = pd.date_range(start=dummy_end, end=latest_cutoff, freq="MS")
+    if len(cutoff_dates) == 0:
+        return None
 
-    component_preds = []
-    component_names = []
-    for spec_name, spec in component_specs.items():
-        try:
-            X_train = train_subset[spec["exog_cols"]].astype(float)
-            X_test = test_subset[spec["exog_cols"]].astype(float)
-            fitted = _fit_model(y_train, X_train, spec["order"], spec["seasonal_order"])
-            pred = fitted.get_forecast(steps=n_test, exog=X_test)
-            pred_real = np.exp(pred.predicted_mean).values
-            component_preds.append(pred_real)
-            component_names.append(spec_name)
-        except Exception:
+    # Initialize per-model storage
+    model_results = {
+        name: {"predictions": {}, "actuals": {}, "window_mapes": [], "cutoff_dates": []}
+        for name in model_specs
+    }
+
+    for cutoff in cutoff_dates:
+        train_mask = train_df["data"] <= cutoff
+        test_start = cutoff + pd.DateOffset(months=1)
+        test_end = cutoff + pd.DateOffset(months=OOS_HORIZON)
+        test_mask = (train_df["data"] >= test_start) & (train_df["data"] <= test_end)
+
+        train_subset = train_df[train_mask].copy()
+        test_subset = train_df[test_mask].copy()
+        n_test = len(test_subset)
+        if n_test < OOS_HORIZON:
             continue
 
-    if not component_preds:
-        return None
+        y_train = y_full[train_mask].copy()
+        y_test_real = test_subset["icms_sp"].astype(float).values
+        cutoff_str = cutoff.strftime("%Y-%m-%d")
 
-    # Inverse-MSE weighted combination (Bates & Granger, 1969)
-    weights, mses = _compute_inverse_mse_weights(component_preds, y_test_real)
-    weighted_pred = np.zeros_like(component_preds[0])
-    for w, pred in zip(weights, component_preds):
-        weighted_pred += w * pred
+        for name, spec in model_specs.items():
+            try:
+                X_train = train_subset[spec["exog_cols"]].astype(float)
+                X_test = test_subset[spec["exog_cols"]].astype(float)
 
-    sum_real = float(np.sum(y_test_real))
-    sum_pred = float(np.sum(weighted_pred))
-    mape = abs((sum_real - sum_pred) / sum_real) * 100 if sum_real != 0 else None
+                fitted = _fit_model(y_train, X_train, spec["order"], spec["seasonal_order"])
+                pred = fitted.get_forecast(steps=n_test, exog=X_test)
+                pred_real = np.exp(pred.predicted_mean).values
+
+                sum_real = float(np.sum(y_test_real))
+                sum_pred = float(np.sum(pred_real))
+                mape_12m = abs((sum_real - sum_pred) / sum_real) * 100 if sum_real != 0 else None
+
+                model_results[name]["predictions"][cutoff_str] = pred_real
+                model_results[name]["actuals"][cutoff_str] = y_test_real
+                if mape_12m is not None:
+                    model_results[name]["window_mapes"].append(mape_12m)
+                    model_results[name]["cutoff_dates"].append(cutoff_str)
+            except Exception:
+                continue
+
+    return model_results
+
+
+def _build_oos_result_from_windows(model_window_data):
+    """Convert per-model expanding-window data into OOS result dict."""
+    mape_values = model_window_data["window_mapes"]
+    cutoff_dates = model_window_data["cutoff_dates"]
+
+    if not mape_values:
+        return {"status": "no_valid_windows", "mape": None, "dummy_end": LAST_DUMMY_END}
 
     return {
-        "mape": round(mape, 2) if mape is not None else None,
-        "weights": {n: round(w, 4) for n, w in zip(component_names, weights)},
+        "status": "ok",
+        "mape": round(float(np.mean(mape_values)), 2),
+        "mape_mean": round(float(np.mean(mape_values)), 2),
+        "mape_std": round(float(np.std(mape_values)), 2),
+        "mape_min": round(float(np.min(mape_values)), 2),
+        "mape_max": round(float(np.max(mape_values)), 2),
+        "n_windows": len(mape_values),
+        "oos_horizon_months": 12,
+        "first_window_train_end": cutoff_dates[0],
+        "last_window_train_end": cutoff_dates[-1],
+        "dummy_end": LAST_DUMMY_END,
+        "windows": [
+            {"train_end": cd, "mape_12m": round(m, 2)}
+            for cd, m in zip(cutoff_dates, mape_values)
+        ],
+        "method": "expanding_window_12m_ahead",
+        "note": (f"Expanding window: {len(mape_values)} janelas, treino expandindo "
+                 f"a partir de {LAST_DUMMY_END}, teste sempre 12 meses à frente. "
+                 f"MAPE = média dos MAPEs acumulados de 12 meses."),
+    }
+
+
+def _compute_ensemble_mape_from_windows(model_window_data, component_names):
+    """Compute ensemble MAPE from pre-computed individual model predictions.
+
+    For each window, combines individual predictions with inverse-MSE weights
+    and computes the 12m accumulated MAPE. No re-fitting needed.
+    """
+    # Find windows where ALL components have predictions
+    all_cutoffs = None
+    for name in component_names:
+        cutoffs = set(model_window_data[name]["predictions"].keys())
+        all_cutoffs = cutoffs if all_cutoffs is None else all_cutoffs & cutoffs
+
+    if not all_cutoffs:
+        return None
+
+    window_mapes = []
+    last_weights = {}
+    for cutoff_str in sorted(all_cutoffs):
+        actuals = model_window_data[component_names[0]]["actuals"][cutoff_str]
+        preds = [model_window_data[n]["predictions"][cutoff_str] for n in component_names]
+
+        weights, _ = _compute_inverse_mse_weights(preds, actuals)
+        weighted_pred = np.zeros_like(preds[0])
+        for w, p in zip(weights, preds):
+            weighted_pred += w * p
+
+        sum_real = float(np.sum(actuals))
+        sum_pred = float(np.sum(weighted_pred))
+        mape = abs((sum_real - sum_pred) / sum_real) * 100 if sum_real != 0 else None
+
+        if mape is not None:
+            window_mapes.append(mape)
+            last_weights = {n: round(w, 4) for n, w in zip(component_names, weights)}
+
+    if not window_mapes:
+        return None
+
+    return {
+        "mape": round(float(np.mean(window_mapes)), 2),
+        "mape_std": round(float(np.std(window_mapes)), 2),
+        "n_windows": len(window_mapes),
+        "weights": last_weights,
         "method": "inverse_mse",
     }
 
@@ -341,9 +372,6 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
             X_train = train_df[spec["exog_cols"]].astype(float)
             result = _fit_model(y, X_train, spec["order"], spec["seasonal_order"])
 
-            # --- Out-of-sample validation (rolling 5-window MAPE) ---
-            oos_result = _run_oos_validation(train_df, y, spec)
-
             # Diagnostics — Ljung-Box with NaN-safe residual handling
             resid = result.resid.copy()
             resid = resid[resid.notna()]  # drop any NaN residuals
@@ -367,8 +395,8 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
                 "n_obs": _to_python(result.nobs),
                 "n_resid_used": len(resid),
                 "description": spec["description"],
-                "mape": oos_result.get("mape"),
-                "oos_validation": oos_result,
+                "mape": None,  # filled after expanding-window OOS
+                "oos_validation": None,
             }
             if lb_pval is not None:
                 diag_entry["ljung_box_p"] = round(lb_pval, 4)
@@ -379,10 +407,6 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
                 diag_entry["ljung_box_error"] = lb_error
 
             diagnostics_output[name] = diag_entry
-
-            # Track individual MAPE for all_candidates
-            if oos_result.get("mape") is not None:
-                individual_mapes[name] = oos_result["mape"]
 
             # Coefficients
             models_output[name] = {
@@ -426,9 +450,26 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
             models_output[name] = {"error": str(e)}
 
     # =========================================================================
-    # All 31 ensemble combinations
+    # Expanding-window OOS validation (single pass for all models)
     # =========================================================================
     valid_models = [n for n in model_names if n in forecasts_output and isinstance(forecasts_output[n], list)]
+
+    expanding_window_data = _run_all_expanding_windows(train_df, y, MODEL_SPECS)
+
+    # Update diagnostics and individual_mapes with expanding window results
+    for name in valid_models:
+        if expanding_window_data and name in expanding_window_data:
+            oos_result = _build_oos_result_from_windows(expanding_window_data[name])
+        else:
+            oos_result = {"status": "no_data", "mape": None}
+        diagnostics_output[name]["mape"] = oos_result.get("mape")
+        diagnostics_output[name]["oos_validation"] = oos_result
+        if oos_result.get("mape") is not None:
+            individual_mapes[name] = oos_result["mape"]
+
+    # =========================================================================
+    # All 31 ensemble combinations
+    # =========================================================================
 
     # Build all_candidates: individual models + all ensemble combos
     all_candidates = {}
@@ -443,20 +484,23 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
         }
 
     # 2) All ensemble combinations (pairs, triples, quadruples, quintuple)
+    #    Uses pre-computed individual predictions from expanding windows — no re-fitting
     for combo_size in range(2, len(valid_models) + 1):
         for combo in combinations(valid_models, combo_size):
             combo_name = "Ensemble(" + ",".join(
                 m.replace("Modelo ", "M") for m in combo
             ) + ")"
-            component_specs = {m: MODEL_SPECS[m] for m in combo}
-            oos_result = _run_ensemble_oos_validation(
-                train_df, y, component_specs
-            )
+            if expanding_window_data:
+                oos_result = _compute_ensemble_mape_from_windows(
+                    expanding_window_data, list(combo)
+                )
+            else:
+                oos_result = None
             if isinstance(oos_result, dict):
                 ensemble_mape = oos_result.get("mape")
                 ensemble_weights = oos_result.get("weights", {})
             else:
-                ensemble_mape = oos_result
+                ensemble_mape = None
                 ensemble_weights = {}
             all_candidates[combo_name] = {
                 "mape": ensemble_mape,
