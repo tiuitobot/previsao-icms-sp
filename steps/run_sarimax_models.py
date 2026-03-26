@@ -15,11 +15,10 @@ from statsmodels.tsa.stattools import adfuller
 N_SIMULATIONS = 1000
 MC_PERCENTILES = [5, 25, 50, 75, 95]
 
-# OOS validation: post-dummy window
-# Last structural dummy ends May 2023 (TC2022OUT05).
-# OOS test only uses data AFTER all dummies are fully in the training set.
-LAST_DUMMY_END = "2023-05-01"  # TC2022OUT05 last month
-OOS_MIN_POST_DUMMY_MONTHS = 1  # minimum test months to be valid
+# OOS validation configuration
+DUMMY_COLS = ["LS2008NOV", "TC2020APR04", "TC2022OUT05"]
+MIN_TRAIN_MONTHS = 120  # 10 years minimum training for robust ARIMA
+MIN_OOS_WINDOWS = 10    # minimum expanding windows for reliable MAPE
 
 
 def _to_python(obj):
@@ -153,29 +152,90 @@ def _compute_inverse_mse_weights(component_preds, y_test_real):
     return weights, mses
 
 
-def _run_all_expanding_windows(train_df, y_full, model_specs):
-    """Run expanding-window OOS for ALL individual models in a single pass.
+def _pre_correct_dummies(y, train_df, fitted_result, spec):
+    """Remove dummy effects from log(ICMS) series using full-sample coefficients.
 
-    Returns a dict keyed by model name, each containing:
-      - predictions: dict of cutoff_date -> predicted array (12m, real scale)
-      - actuals: dict of cutoff_date -> actual array (12m, real scale)
-      - window_mapes: list of per-window 12m accumulated MAPE
-      - cutoff_dates: list of cutoff date strings
-
-    This avoids re-fitting when computing ensemble MAPEs: just combine
-    the individual predictions with inverse-MSE weights.
+    Returns:
+      y_adj: log(ICMS) with dummy effects removed (same index as y)
+      non_dummy_cols: exog columns excluding dummies
+      dummy_effects: array of dummy effects per observation (log scale)
+      dummy_coeffs: dict of dummy_col -> coefficient
     """
-    OOS_HORIZON = 12
-    dummy_end = pd.Timestamp(LAST_DUMMY_END)
+    dummy_cols_in_model = [c for c in spec["exog_cols"] if c in DUMMY_COLS]
+    non_dummy_cols = [c for c in spec["exog_cols"] if c not in DUMMY_COLS]
+
+    # Extract dummy coefficients from full-sample fit
+    dummy_coeffs = {}
+    dummy_effects = np.zeros(len(y))
+    for col in dummy_cols_in_model:
+        if col in fitted_result.params.index:
+            coef = float(fitted_result.params[col])
+            dummy_coeffs[col] = coef
+            dummy_effects += coef * train_df[col].astype(float).values
+
+    y_adj = y.copy()
+    y_adj = y_adj - dummy_effects
+
+    return y_adj, non_dummy_cols, dummy_effects, dummy_coeffs
+
+
+def _determine_oos_horizon(target_horizon, first_valid_cutoff, last_obs):
+    """Dynamically reduce horizon if needed to get at least MIN_OOS_WINDOWS."""
+    for h in range(target_horizon, 0, -1):
+        latest_cutoff = last_obs - pd.DateOffset(months=h)
+        if latest_cutoff > first_valid_cutoff:
+            n_windows = len(pd.date_range(start=first_valid_cutoff, end=latest_cutoff, freq="MS"))
+            if n_windows >= MIN_OOS_WINDOWS:
+                return h
+    return max(1, target_horizon)  # fallback
+
+
+def _run_all_expanding_windows(train_df, y_full, model_specs, full_sample_fits,
+                               oos_horizon):
+    """Run expanding-window OOS for ALL models with dummy pre-correction.
+
+    Dummy effects (estimated from full sample) are removed from both the
+    training series and the test actuals. This allows starting windows much
+    earlier than the last structural break, since the model only needs to
+    predict the underlying dynamics (ARIMA + non-dummy exogenous).
+
+    Returns a dict keyed by model name with predictions, actuals, and MAPEs.
+    """
     last_obs = train_df["data"].max()
+    first_valid_date = train_df["data"].iloc[0] + pd.DateOffset(months=MIN_TRAIN_MONTHS)
 
-    latest_cutoff = last_obs - pd.DateOffset(months=OOS_HORIZON)
-    if latest_cutoff <= dummy_end:
-        return None
+    # Dynamic horizon relaxation
+    effective_horizon = _determine_oos_horizon(oos_horizon, first_valid_date, last_obs)
 
-    cutoff_dates = pd.date_range(start=dummy_end, end=latest_cutoff, freq="MS")
-    if len(cutoff_dates) == 0:
-        return None
+    latest_cutoff = last_obs - pd.DateOffset(months=effective_horizon)
+    if latest_cutoff <= first_valid_date:
+        return None, effective_horizon
+
+    MAX_WINDOWS = 40  # cap to keep computation under ~3 min per horizon
+    all_cutoffs = pd.date_range(start=first_valid_date, end=latest_cutoff, freq="MS")
+    if len(all_cutoffs) == 0:
+        return None, effective_horizon
+    # Space cutoffs evenly if too many
+    if len(all_cutoffs) > MAX_WINDOWS:
+        step = max(1, len(all_cutoffs) // MAX_WINDOWS)
+        cutoff_dates = all_cutoffs[::step]
+    else:
+        cutoff_dates = all_cutoffs
+
+    # Pre-correct dummy effects per model (using full-sample coefficients)
+    model_corrections = {}
+    for name, spec in model_specs.items():
+        if name not in full_sample_fits:
+            continue
+        y_adj, non_dummy_cols, dummy_effects, dummy_coeffs = _pre_correct_dummies(
+            y_full, train_df, full_sample_fits[name], spec
+        )
+        model_corrections[name] = {
+            "y_adj": y_adj,
+            "non_dummy_cols": non_dummy_cols,
+            "dummy_effects": dummy_effects,
+            "dummy_coeffs": dummy_coeffs,
+        }
 
     # Initialize per-model storage
     model_results = {
@@ -186,50 +246,59 @@ def _run_all_expanding_windows(train_df, y_full, model_specs):
     for cutoff in cutoff_dates:
         train_mask = train_df["data"] <= cutoff
         test_start = cutoff + pd.DateOffset(months=1)
-        test_end = cutoff + pd.DateOffset(months=OOS_HORIZON)
+        test_end = cutoff + pd.DateOffset(months=effective_horizon)
         test_mask = (train_df["data"] >= test_start) & (train_df["data"] <= test_end)
 
         train_subset = train_df[train_mask].copy()
         test_subset = train_df[test_mask].copy()
         n_test = len(test_subset)
-        if n_test < OOS_HORIZON:
+        if n_test < effective_horizon:
             continue
 
-        y_train = y_full[train_mask].copy()
-        y_test_real = test_subset["icms_sp"].astype(float).values
         cutoff_str = cutoff.strftime("%Y-%m-%d")
 
         for name, spec in model_specs.items():
+            if name not in model_corrections:
+                continue
+            corr = model_corrections[name]
             try:
-                X_train = train_subset[spec["exog_cols"]].astype(float)
-                X_test = test_subset[spec["exog_cols"]].astype(float)
+                # Use dummy-corrected y and non-dummy exog
+                y_adj_train = corr["y_adj"][train_mask].copy()
+                y_adj_test = corr["y_adj"][test_mask]
+                non_dummy_cols = corr["non_dummy_cols"]
 
-                fitted = _fit_model(y_train, X_train, spec["order"], spec["seasonal_order"])
+                X_train = train_subset[non_dummy_cols].astype(float)
+                X_test = test_subset[non_dummy_cols].astype(float)
+
+                fitted = _fit_model(y_adj_train, X_train, spec["order"], spec["seasonal_order"])
                 pred = fitted.get_forecast(steps=n_test, exog=X_test)
                 pred_real = np.exp(pred.predicted_mean).values
 
-                sum_real = float(np.sum(y_test_real))
+                # Actuals also dummy-corrected (fair comparison)
+                actual_real = np.exp(y_adj_test.values)
+
+                sum_real = float(np.sum(actual_real))
                 sum_pred = float(np.sum(pred_real))
-                mape_12m = abs((sum_real - sum_pred) / sum_real) * 100 if sum_real != 0 else None
+                mape = abs((sum_real - sum_pred) / sum_real) * 100 if sum_real != 0 else None
 
                 model_results[name]["predictions"][cutoff_str] = pred_real
-                model_results[name]["actuals"][cutoff_str] = y_test_real
-                if mape_12m is not None:
-                    model_results[name]["window_mapes"].append(mape_12m)
+                model_results[name]["actuals"][cutoff_str] = actual_real
+                if mape is not None:
+                    model_results[name]["window_mapes"].append(mape)
                     model_results[name]["cutoff_dates"].append(cutoff_str)
             except Exception:
                 continue
 
-    return model_results
+    return model_results, effective_horizon
 
 
-def _build_oos_result_from_windows(model_window_data):
+def _build_oos_result_from_windows(model_window_data, effective_horizon):
     """Convert per-model expanding-window data into OOS result dict."""
     mape_values = model_window_data["window_mapes"]
     cutoff_dates = model_window_data["cutoff_dates"]
 
     if not mape_values:
-        return {"status": "no_valid_windows", "mape": None, "dummy_end": LAST_DUMMY_END}
+        return {"status": "no_valid_windows", "mape": None}
 
     return {
         "status": "ok",
@@ -239,18 +308,17 @@ def _build_oos_result_from_windows(model_window_data):
         "mape_min": round(float(np.min(mape_values)), 2),
         "mape_max": round(float(np.max(mape_values)), 2),
         "n_windows": len(mape_values),
-        "oos_horizon_months": 12,
+        "oos_horizon_months": effective_horizon,
         "first_window_train_end": cutoff_dates[0],
         "last_window_train_end": cutoff_dates[-1],
-        "dummy_end": LAST_DUMMY_END,
         "windows": [
-            {"train_end": cd, "mape_12m": round(m, 2)}
+            {"train_end": cd, "mape": round(m, 2)}
             for cd, m in zip(cutoff_dates, mape_values)
         ],
-        "method": "expanding_window_12m_ahead",
-        "note": (f"Expanding window: {len(mape_values)} janelas, treino expandindo "
-                 f"a partir de {LAST_DUMMY_END}, teste sempre 12 meses à frente. "
-                 f"MAPE = média dos MAPEs acumulados de 12 meses."),
+        "method": "expanding_window_dummy_corrected",
+        "note": (f"Expanding window: {len(mape_values)} janelas, horizonte {effective_horizon}m. "
+                 f"Efeitos de dummies removidos usando coeficientes do sample completo. "
+                 f"MAPE = média dos MAPEs acumulados de {effective_horizon} meses."),
     }
 
 
@@ -258,7 +326,7 @@ def _compute_ensemble_mape_from_windows(model_window_data, component_names):
     """Compute ensemble MAPE from pre-computed individual model predictions.
 
     For each window, combines individual predictions with inverse-MSE weights
-    and computes the 12m accumulated MAPE. No re-fitting needed.
+    and computes the accumulated MAPE. No re-fitting needed.
     """
     # Find windows where ALL components have predictions
     all_cutoffs = None
@@ -362,6 +430,8 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
     mc_simulations = {}
     # Per-model OOS MAPE (for ensemble building)
     individual_mapes = {}
+    # Store full-sample fits for dummy pre-correction in OOS
+    full_sample_fits = {}
 
     for name in model_names:
         spec = MODEL_SPECS.get(name)
@@ -371,6 +441,7 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
         try:
             X_train = train_df[spec["exog_cols"]].astype(float)
             result = _fit_model(y, X_train, spec["order"], spec["seasonal_order"])
+            full_sample_fits[name] = result
 
             # Diagnostics — Ljung-Box with NaN-safe residual handling
             resid = result.resid.copy()
@@ -454,24 +525,138 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
     # =========================================================================
     valid_models = [n for n in model_names if n in forecasts_output and isinstance(forecasts_output[n], list)]
 
-    expanding_window_data = _run_all_expanding_windows(train_df, y, MODEL_SPECS)
+    # Run short horizon OOS (for backward-compat diagnostics)
+    short_months = 12 - last_icms_date.month  # rest of current year
+    short_oos_data, short_eff_h = _run_all_expanding_windows(
+        train_df, y, MODEL_SPECS, full_sample_fits, oos_horizon=short_months
+    )
 
-    # Update diagnostics and individual_mapes with expanding window results
+    # Update diagnostics with short-horizon OOS (backward compatibility)
     for name in valid_models:
-        if expanding_window_data and name in expanding_window_data:
-            oos_result = _build_oos_result_from_windows(expanding_window_data[name])
+        if short_oos_data and name in short_oos_data:
+            oos_result = _build_oos_result_from_windows(short_oos_data[name], short_eff_h)
         else:
             oos_result = {"status": "no_data", "mape": None}
         diagnostics_output[name]["mape"] = oos_result.get("mape")
         diagnostics_output[name]["oos_validation"] = oos_result
+
+    # =========================================================================
+    # Build results for TWO horizons
+    # =========================================================================
+    long_months = short_months + 12  # rest of current year + next full year
+
+    horizon_short = _build_horizon_results(
+        train_df=train_df, y=y, valid_models=valid_models,
+        full_sample_fits=full_sample_fits, oos_horizon=short_months,
+        forecasts_output=forecasts_output, mc_simulations=mc_simulations,
+        future_df=future_df, n_future=n_future,
+        last_icms_date=last_icms_date, forecast_start=forecast_start,
+    )
+    horizon_long = _build_horizon_results(
+        train_df=train_df, y=y, valid_models=valid_models,
+        full_sample_fits=full_sample_fits, oos_horizon=long_months,
+        forecasts_output=forecasts_output, mc_simulations=mc_simulations,
+        future_df=future_df, n_future=n_future,
+        last_icms_date=last_icms_date, forecast_start=forecast_start,
+    )
+
+    # =========================================================================
+    # MC annual paths per model — shared across horizons
+    # =========================================================================
+    mc_paths_output = {}
+    for model_name, paths in mc_simulations.items():
+        annual_paths = {}
+        for year in sorted(set(future_df["data"].dt.year)):
+            year_mask = future_df["data"].dt.year == year
+            year_indices = [i for i, m in enumerate(year_mask) if m]
+            if year_indices:
+                year_sums = paths[:, year_indices].sum(axis=1)
+                annual_paths[str(year)] = [round(float(v) / 1e9, 2) for v in year_sums]
+        mc_paths_output[model_name] = annual_paths
+
+    # Best model by AIC (backward compat)
+    valid_diag = {n: d for n, d in diagnostics_output.items() if "aic" in d}
+    best_model_aic = min(valid_diag, key=lambda n: valid_diag[n]["aic"]) if valid_diag else None
+
+    # Use short horizon as backward-compat default
+    short_mc_models = horizon_short.get("_mc_models_used", [])
+
+    result = {
+        "models": models_output,
+        "forecasts": forecasts_output,
+        "diagnostics": diagnostics_output,
+        # Horizon-specific results
+        "horizons": {
+            "short": {k: v for k, v in horizon_short.items() if not k.startswith("_")},
+            "long": {k: v for k, v in horizon_long.items() if not k.startswith("_")},
+        },
+        # Backward compat — point to short horizon
+        "ensemble_mean": horizon_short["ensemble_mean"],
+        "confidence_intervals": horizon_short["confidence_intervals"],
+        "annual_totals": horizon_short["annual_totals"],
+        "best_model": horizon_short["best_model"],
+        "best_model_mape": horizon_short["best_model_mape"],
+        "all_candidates": horizon_short["all_candidates"],
+        "top5_ensembles": horizon_short["top5_ensembles"],
+        "ensemble_weighting": horizon_short["ensemble_weighting"],
+        "forecast_horizon": {
+            "last_icms_observation": last_icms_date.strftime("%Y-%m-%d"),
+            "forecast_start": forecast_start.strftime("%Y-%m-%d"),
+            "forecast_end": horizon_short["forecast_horizon"]["forecast_end"],
+            "n_months": n_future,
+        },
+        "adf_test": {
+            "statistic": round(_to_python(adf_result[0]), 4),
+            "p_value": round(_to_python(adf_result[1]), 4),
+            "stationary": _to_python(adf_result[1]) < 0.05,
+        },
+        "monte_carlo_config": {
+            "n_simulations": N_SIMULATIONS,
+            "percentiles_used": MC_PERCENTILES,
+            "models_simulated": len(short_mc_models),
+            "models_failed": len(valid_models) - len(short_mc_models),
+            "best_candidate_components": short_mc_models,
+        },
+        "mc_annual_paths": mc_paths_output,
+        "n_models_fitted": len(valid_models),
+        "status": "ok"
+    }
+
+    out_file = od / "run_sarimax_models.json"
+    out_file.write_text(json.dumps(result, ensure_ascii=False, indent=2, cls=_NumpyEncoder), encoding="utf-8")
+
+    return result
+
+
+def _build_horizon_results(*, train_df, y, valid_models, full_sample_fits,
+                           oos_horizon, forecasts_output, mc_simulations,
+                           future_df, n_future, last_icms_date, forecast_start):
+    """Build OOS validation, ensemble selection, CIs, and annual totals for one horizon.
+
+    Returns a dict with all horizon-specific results. Internal keys prefixed with
+    '_' are stripped before serialization.
+    """
+    # =========================================================================
+    # Expanding-window OOS for this horizon
+    # =========================================================================
+    expanding_window_data, effective_horizon = _run_all_expanding_windows(
+        train_df, y, MODEL_SPECS, full_sample_fits, oos_horizon=oos_horizon
+    )
+
+    individual_mapes = {}
+    for name in valid_models:
+        if expanding_window_data and name in expanding_window_data:
+            oos_result = _build_oos_result_from_windows(
+                expanding_window_data[name], effective_horizon
+            )
+        else:
+            oos_result = {"status": "no_data", "mape": None}
         if oos_result.get("mape") is not None:
             individual_mapes[name] = oos_result["mape"]
 
     # =========================================================================
     # All 31 ensemble combinations
     # =========================================================================
-
-    # Build all_candidates: individual models + all ensemble combos
     all_candidates = {}
 
     # 1) Individual models
@@ -484,7 +669,6 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
         }
 
     # 2) All ensemble combinations (pairs, triples, quadruples, quintuple)
-    #    Uses pre-computed individual predictions from expanding windows — no re-fitting
     for combo_size in range(2, len(valid_models) + 1):
         for combo in combinations(valid_models, combo_size):
             combo_name = "Ensemble(" + ",".join(
@@ -534,7 +718,9 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
         {"name": name, **info} for name, info in top5_ensembles
     ]
 
-    # Ensemble forecasts — inverse-MSE weighted if best is ensemble, else equal weight
+    # =========================================================================
+    # Ensemble point forecasts — inverse-MSE weighted
+    # =========================================================================
     ensemble = []
     best_weights = {}
     if best_candidate_name and best_candidate_name in all_candidates:
@@ -547,7 +733,6 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
         for i in range(n_periods):
             date = forecasts_output[valid_models[0]][i]["data"]
             if best_weights:
-                # Weighted ensemble using inverse-MSE weights
                 weighted_val = sum(
                     best_weights.get(m, 0) * forecasts_output[m][i]["forecast"]
                     for m in best_weights if m in forecasts_output
@@ -560,7 +745,6 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
                     "max": round(_to_python(np.max(all_vals)), 2),
                 })
             else:
-                # Equal weight (fallback)
                 values = [forecasts_output[m][i]["forecast"] for m in valid_models]
                 ensemble.append({
                     "data": date,
@@ -569,7 +753,6 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
                     "max": round(_to_python(np.max(values)), 2),
                 })
 
-    # Also apply weights to Monte Carlo paths
     ensemble_weighting = {
         "method": "inverse_mse" if best_weights else "equal_weight",
         "weights": best_weights if best_weights else {m: round(1/len(valid_models), 4) for m in valid_models},
@@ -579,23 +762,7 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
     }
 
     # =========================================================================
-    # MC annual paths per model — for client-side CI computation
-    # =========================================================================
-    mc_paths_output = {}
-    for model_name, paths in mc_simulations.items():
-        # paths shape: [N_SIMULATIONS, n_future]
-        # Save annual sums per simulation (not monthly — too large)
-        annual_paths = {}
-        for year in sorted(set(future_df["data"].dt.year)):
-            year_mask = future_df["data"].dt.year == year
-            year_indices = [i for i, m in enumerate(year_mask) if m]
-            if year_indices:
-                year_sums = paths[:, year_indices].sum(axis=1)  # [N_SIMULATIONS]
-                annual_paths[str(year)] = [round(float(v) / 1e9, 2) for v in year_sums]  # in billions
-        mc_paths_output[model_name] = annual_paths
-
-    # =========================================================================
-    # Monte Carlo ensemble: use best candidate's components
+    # Monte Carlo ensemble CIs: use this horizon's best ensemble components
     # =========================================================================
     if best_candidate_name and best_candidate_name in all_candidates:
         best_components = all_candidates[best_candidate_name]["components"]
@@ -607,17 +774,14 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
     mc_ensemble_paths = None
 
     if mc_models_used:
-        # Stack: shape [n_models, N_SIMULATIONS, n_future]
         stacked = np.stack([mc_simulations[n] for n in mc_models_used], axis=0)
-        # Apply inverse-MSE weights (or equal weight) across models
         if best_weights and all(n in best_weights for n in mc_models_used):
             mc_weights = np.array([best_weights[n] for n in mc_models_used])
-            mc_weights = mc_weights / mc_weights.sum()  # normalize
+            mc_weights = mc_weights / mc_weights.sum()
             mc_ensemble_paths = np.tensordot(mc_weights, stacked, axes=([0], [0]))
         else:
-            mc_ensemble_paths = np.mean(stacked, axis=0)  # equal weight fallback
+            mc_ensemble_paths = np.mean(stacked, axis=0)
 
-        # Monthly percentile CIs from ensemble paths
         future_dates = future_df["data"].dt.strftime("%Y-%m-%d").tolist()
         for t in range(n_future):
             col = mc_ensemble_paths[:, t]
@@ -626,21 +790,27 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
                 entry[f"p{p}"] = round(float(np.percentile(col, p)), 2)
             mc_confidence_intervals.append(entry)
 
+    # Confidence intervals dict
+    confidence_intervals = {
+        "source": "monte_carlo_ensemble" if mc_confidence_intervals else "analytical_best_model",
+        "n_models_in_ensemble": len(mc_models_used),
+        "models_used": mc_models_used,
+    }
+    if mc_confidence_intervals:
+        confidence_intervals["intervals"] = mc_confidence_intervals
+
     # =========================================================================
-    # Annual totals — now with CI bands from Monte Carlo
-    # Include realized ICMS months for the current year (forecast_start year)
+    # Annual totals with realized ICMS for current year
     # =========================================================================
     annual_totals = {}
     future_years = future_df["data"].dt.year.values
 
-    # Compute realized ICMS for the year that straddles observed/forecast
     current_year = last_icms_date.year
     realized_current_year = float(
         train_df.loc[train_df["data"].dt.year == current_year, "icms_sp"]
         .astype(float).sum()
     )
 
-    # Per-model annual totals (point forecasts + realized for current year)
     for name in valid_models + ["ensemble"]:
         data = ensemble if name == "ensemble" else forecasts_output.get(name, [])
         if not data:
@@ -650,14 +820,12 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
             year = entry["data"][:4]
             by_year.setdefault(year, 0)
             by_year[year] += entry["forecast"]
-        totals = {y: round(v / 1e9, 2) for y, v in by_year.items()}
-        # Add realized months to current year
+        totals = {y_str: round(v / 1e9, 2) for y_str, v in by_year.items()}
         cy_str = str(current_year)
         if cy_str in totals:
             totals[cy_str] = round((by_year[cy_str] + realized_current_year) / 1e9, 2)
         annual_totals[name] = totals
 
-    # Store realized amount and month count for downstream consumers
     realized_months = int((train_df["data"].dt.year == current_year).sum())
     annual_totals["_realized"] = {
         "year": current_year,
@@ -673,9 +841,7 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
             yr_indices = np.where(future_years == yr)[0]
             if len(yr_indices) == 0:
                 continue
-            # Sum each simulation path over the months of this year
-            annual_sums = np.sum(mc_ensemble_paths[:, yr_indices], axis=1)  # [N_SIMULATIONS]
-            # Add realized ICMS for current year
+            annual_sums = np.sum(mc_ensemble_paths[:, yr_indices], axis=1)
             if yr == current_year:
                 annual_sums = annual_sums + realized_current_year
             yr_entry = {}
@@ -686,10 +852,9 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
             mc_annual[str(yr)] = yr_entry
         annual_totals["ensemble_mc"] = mc_annual
 
-        # Per-model annual CIs from Monte Carlo
         all_mc_models = [n for n in valid_models if n in mc_simulations]
         for name in all_mc_models:
-            model_sims = mc_simulations[name]  # [N_SIMULATIONS, n_future]
+            model_sims = mc_simulations[name]
             mc_model_annual = {}
             for yr in unique_years:
                 yr_indices = np.where(future_years == yr)[0]
@@ -706,59 +871,42 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
                 mc_model_annual[str(yr)] = yr_entry
             annual_totals[f"{name}_mc"] = mc_model_annual
 
-    # Best model by AIC (backward compat)
-    valid_diag = {n: d for n, d in diagnostics_output.items() if "aic" in d}
-    best_model_aic = min(valid_diag, key=lambda n: valid_diag[n]["aic"]) if valid_diag else None
+    # =========================================================================
+    # Forecast horizon metadata for this horizon
+    # =========================================================================
+    # Determine forecast_end based on horizon
+    horizon_end_date = forecast_start + pd.DateOffset(months=oos_horizon - 1)
+    # Snap to end of month for display
+    forecast_end_display = pd.Timestamp(
+        f"{horizon_end_date.year}-{horizon_end_date.month:02d}-"
+        f"{horizon_end_date.days_in_month:02d}"
+    )
 
-    # Confidence intervals from Monte Carlo
-    confidence_intervals = {
-        "source": "monte_carlo_ensemble" if mc_confidence_intervals else "analytical_best_model",
-        "n_models_in_ensemble": len(mc_models_used),
-        "models_used": mc_models_used,
-    }
-    if mc_confidence_intervals:
-        confidence_intervals["intervals"] = mc_confidence_intervals
-    elif best_model_aic and best_model_aic in forecasts_output:
-        # Fallback to analytical CI from best model
-        confidence_intervals["model"] = best_model_aic
-        confidence_intervals["intervals"] = forecasts_output[best_model_aic]
-
-    result = {
-        "models": models_output,
-        "forecasts": forecasts_output,
-        "diagnostics": diagnostics_output,
-        "ensemble_mean": ensemble,
-        "confidence_intervals": confidence_intervals,
-        "annual_totals": annual_totals,
+    return {
+        "all_candidates": all_candidates,
         "best_model": best_candidate_name,
         "best_model_mape": best_candidate_mape,
-        "all_candidates": all_candidates,
         "top5_ensembles": top5_ensembles,
+        "ensemble_mean": ensemble,
         "ensemble_weighting": ensemble_weighting,
+        "confidence_intervals": confidence_intervals,
+        "annual_totals": annual_totals,
+        "mc_annual_paths": {
+            model_name: {
+                str(yr): [round(float(v) / 1e9, 2) for v in paths[:, np.where(future_years == yr)[0]].sum(axis=1)]
+                for yr in sorted(set(future_years))
+                if len(np.where(future_years == yr)[0]) > 0
+            }
+            for model_name, paths in mc_simulations.items()
+        },
+        "oos_effective_horizon": effective_horizon,
         "forecast_horizon": {
-            "last_icms_observation": last_icms_date.strftime("%Y-%m-%d"),
             "forecast_start": forecast_start.strftime("%Y-%m-%d"),
-            "forecast_end": forecast_end.strftime("%Y-%m-%d"),
-            "n_months": n_future,
+            "forecast_end": forecast_end_display.strftime("%Y-%m-%d"),
+            "oos_horizon_months": oos_horizon,
+            "oos_effective_horizon": effective_horizon,
+            "n_months_forecast": n_future,
         },
-        "adf_test": {
-            "statistic": round(_to_python(adf_result[0]), 4),
-            "p_value": round(_to_python(adf_result[1]), 4),
-            "stationary": _to_python(adf_result[1]) < 0.05,
-        },
-        "monte_carlo_config": {
-            "n_simulations": N_SIMULATIONS,
-            "percentiles_used": MC_PERCENTILES,
-            "models_simulated": len(mc_models_used),
-            "models_failed": len(valid_models) - len(mc_models_used),
-            "best_candidate_components": mc_models_used,
-        },
-        "mc_annual_paths": mc_paths_output,
-        "n_models_fitted": len(valid_models),
-        "status": "ok"
+        # Internal keys (stripped before serialization)
+        "_mc_models_used": mc_models_used,
     }
-
-    out_file = od / "run_sarimax_models.json"
-    out_file.write_text(json.dumps(result, ensure_ascii=False, indent=2, cls=_NumpyEncoder), encoding="utf-8")
-
-    return result
