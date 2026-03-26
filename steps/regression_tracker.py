@@ -80,6 +80,8 @@ def _compare_runs(current: dict, previous: dict, prev_run_id: str) -> dict:
         for year in set(list(cur_years.keys()) + list(prev_years.keys())):
             cur_val = cur_years.get(year)
             prev_val = prev_years.get(year)
+            if not isinstance(cur_val, (int, float)) or not isinstance(prev_val, (int, float)):
+                continue
             if cur_val is not None and prev_val is not None:
                 pct = _pct_change(cur_val, prev_val)
                 key = f"{source_name}_{year}"
