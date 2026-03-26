@@ -1393,14 +1393,28 @@ def main(*, output_dir: str = "", template_name: str = "", **kwargs) -> dict:
     report_dir = od / "report"
     report_dir.mkdir(exist_ok=True)
 
+    horizon_key = kwargs.get("horizon", "short")
+
     # Load all data sources
-    sarimax = _load(od, "run_sarimax_models")
+    sarimax_raw = _load(od, "run_sarimax_models")
     charts = _load(od, "generate_charts")
     qualitative = _load(od, "qualitative_analysis")
     validation = _load(od, "validate_forecasts")
     macro = _load(od, "fetch_macro_data")
     sefaz = _load(od, "load_sefaz_data")
     cross_validate = _load(od, "cross_validate_r")
+
+    # Overlay horizon-specific fields on top of sarimax data
+    hz_data = sarimax_raw.get("horizons", {}).get(horizon_key, {})
+    sarimax = dict(sarimax_raw)
+    for key in ["all_candidates", "best_model", "best_model_mape", "annual_totals",
+                 "ensemble_mean", "ensemble_weighting", "confidence_intervals",
+                 "top5_ensembles", "forecast_horizon"]:
+        if key in hz_data:
+            sarimax[key] = hz_data[key]
+    # MC paths from horizon if available
+    if "mc_annual_paths" in hz_data:
+        sarimax["mc_annual_paths"] = hz_data["mc_annual_paths"]
 
     plotly_charts = charts.get("plotly_charts", {})
 
@@ -1964,7 +1978,8 @@ def main(*, output_dir: str = "", template_name: str = "", **kwargs) -> dict:
 </body>
 </html>"""
 
-    html_path = report_dir / "dashboard.html"
+    suffix = f"_{horizon_key}" if horizon_key != "short" else ""
+    html_path = report_dir / f"dashboard{suffix}.html"
     html_path.write_text(html, encoding="utf-8")
 
     result = {

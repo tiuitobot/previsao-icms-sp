@@ -84,7 +84,15 @@
       "type": "normal",
       "executor": "python",
       "depends_on": ["generate_charts", "qualitative_analysis", "run_sarimax_models"],
-      "args": {"output_dir": "{output_dir}", "template_name": "pages/dashboard_premium.html.j2"}
+      "args": {"output_dir": "{output_dir}", "template_name": "pages/dashboard_premium.html.j2", "horizon": "short"}
+    },
+    {
+      "id": "render_dashboard_long",
+      "step": "render_dashboard",
+      "type": "normal",
+      "executor": "python",
+      "depends_on": ["generate_charts", "qualitative_analysis", "run_sarimax_models"],
+      "args": {"output_dir": "{output_dir}", "template_name": "pages/dashboard_premium.html.j2", "horizon": "long"}
     },
     {
       "id": "render_academic",
@@ -92,14 +100,22 @@
       "type": "normal",
       "executor": "python",
       "depends_on": ["generate_charts", "qualitative_analysis", "run_sarimax_models"],
-      "args": {"output_dir": "{output_dir}", "template_name": "pages/academic_report.html.j2"}
+      "args": {"output_dir": "{output_dir}", "template_name": "pages/academic_report.html.j2", "horizon": "short"}
+    },
+    {
+      "id": "render_academic_long",
+      "step": "render_academic",
+      "type": "normal",
+      "executor": "python",
+      "depends_on": ["generate_charts", "qualitative_analysis", "run_sarimax_models"],
+      "args": {"output_dir": "{output_dir}", "template_name": "pages/academic_report.html.j2", "horizon": "long"}
     },
     {
       "id": "regression_tracker",
       "step": "regression_tracker",
       "type": "normal",
       "executor": "python",
-      "depends_on": ["render_dashboard", "render_academic"],
+      "depends_on": ["render_dashboard", "render_dashboard_long", "render_academic", "render_academic_long"],
       "args": {"output_dir": "{output_dir}"},
       "non_blocking": true
     }

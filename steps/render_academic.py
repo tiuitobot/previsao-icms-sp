@@ -14,20 +14,25 @@ def main(*, output_dir: str = "", template_name: str = "", **kwargs) -> dict:
     report_dir = od / "report"
     report_dir.mkdir(exist_ok=True)
 
+    horizon_key = kwargs.get("horizon", "short")
+
     sarimax = _load(od, "run_sarimax_models")
     charts = _load(od, "generate_charts")
     validation = _load(od, "validate_forecasts")
+
+    # If horizons exist, overlay horizon-specific fields on top of sarimax
+    hz_data = sarimax.get("horizons", {}).get(horizon_key, {})
 
     static_charts = charts.get("static_charts", {})
     models = sarimax.get("models", {})
     diagnostics = sarimax.get("diagnostics", {})
     adf = sarimax.get("adf_test", {})
-    annual_totals = sarimax.get("annual_totals", {})
-    ensemble_weighting = sarimax.get("ensemble_weighting", {})
-    best_model = sarimax.get("best_model", "N/A")
-    best_mape = sarimax.get("best_model_mape", "—")
-    all_candidates = sarimax.get("all_candidates", {})
-    horizon = sarimax.get("forecast_horizon", {})
+    annual_totals = hz_data.get("annual_totals", sarimax.get("annual_totals", {}))
+    ensemble_weighting = hz_data.get("ensemble_weighting", sarimax.get("ensemble_weighting", {}))
+    best_model = hz_data.get("best_model", sarimax.get("best_model", "N/A"))
+    best_mape = hz_data.get("best_model_mape", sarimax.get("best_model_mape", "—"))
+    all_candidates = hz_data.get("all_candidates", sarimax.get("all_candidates", {}))
+    horizon = hz_data.get("forecast_horizon", sarimax.get("forecast_horizon", {}))
     mc_config = sarimax.get("monte_carlo_config", {})
     realized = annual_totals.get("_realized", {})
 
@@ -74,7 +79,7 @@ def main(*, output_dir: str = "", template_name: str = "", **kwargs) -> dict:
             <tr>
                 <td>{name}</td>
                 <td>{w.get('train_end', '—')}</td>
-                <td>{w.get('mape_12m', '—')}%</td>
+                <td>{w.get('mape', w.get('mape_12m', '—'))}%</td>
             </tr>"""
 
     # Annual forecast table (point estimates only, skip _realized and *_mc)
@@ -345,7 +350,8 @@ def main(*, output_dir: str = "", template_name: str = "", **kwargs) -> dict:
 </body>
 </html>"""
 
-    html_path = report_dir / "academic_report.html"
+    suffix = f"_{horizon_key}" if horizon_key != "short" else ""
+    html_path = report_dir / f"academic_report{suffix}.html"
     html_path.write_text(html, encoding="utf-8")
 
     result = {
