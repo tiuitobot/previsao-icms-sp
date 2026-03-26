@@ -599,10 +599,10 @@ def _build_predictions_table(sarimax: dict) -> str:
     if not all_candidates:
         return ""
 
-    # Determine years from annual_totals (exclude MC entries)
+    # Determine years from annual_totals (exclude MC and metadata entries)
     years = sorted(set(
         y for k, v in annual_totals.items()
-        if not k.endswith("_mc") and isinstance(v, dict)
+        if not k.endswith("_mc") and not k.startswith("_") and isinstance(v, dict)
         for y in v.keys()
         if all(isinstance(vv, (int, float)) for vv in v.values())
     ))
