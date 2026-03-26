@@ -1497,7 +1497,17 @@ def main(*, output_dir: str = "", template_name: str = "", **kwargs) -> dict:
     candidates_json_str = json.dumps(candidates_js, ensure_ascii=False, indent=2)
 
     # MC paths per model — for client-side CI computation
+    # Add realized ICMS to current year MC paths so client-side CI includes actuals
     mc_annual_paths = sarimax.get("mc_annual_paths", {})
+    realized_info = all_annual_totals.get("_realized", {})
+    realized_year = str(realized_info.get("year", ""))
+    realized_brl_bi = realized_info.get("total_brl_bi", 0)
+    if realized_year and realized_brl_bi:
+        for model_name, year_paths in mc_annual_paths.items():
+            if realized_year in year_paths:
+                year_paths[realized_year] = [
+                    round(v + realized_brl_bi, 2) for v in year_paths[realized_year]
+                ]
     mc_paths_json_str = json.dumps(mc_annual_paths, ensure_ascii=False)
 
     # Monthly forecast data per individual model — for client-side chart updates
