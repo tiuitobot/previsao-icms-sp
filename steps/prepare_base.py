@@ -28,9 +28,17 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
     sefaz = _load(od, "load_sefaz_data")
 
     # Default scenario params (interpreter removed — use defaults)
-    horizon_end = 2026
     pib_override = None
     inflation_override = None
+
+    # Dynamic horizon: forecast rest of current year + next year
+    # Determine from ICMS data when available, else use current year
+    icms_series = sefaz.get("icms_sp_series", [])
+    if icms_series:
+        last_icms_year = int(icms_series[-1]["data"][:4])
+    else:
+        last_icms_year = datetime.now().year
+    horizon_end = last_icms_year + 1
 
     # Build date range
     dates = pd.date_range(start="2003-01-01", end=f"{horizon_end}-12-01", freq="MS")
