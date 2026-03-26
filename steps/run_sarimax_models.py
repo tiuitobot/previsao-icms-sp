@@ -584,11 +584,19 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
 
     # =========================================================================
     # Annual totals — now with CI bands from Monte Carlo
+    # Include realized ICMS months for the current year (forecast_start year)
     # =========================================================================
     annual_totals = {}
     future_years = future_df["data"].dt.year.values
 
-    # Per-model annual totals (point forecasts — backward compat)
+    # Compute realized ICMS for the year that straddles observed/forecast
+    current_year = last_icms_date.year
+    realized_current_year = float(
+        train_df.loc[train_df["data"].dt.year == current_year, "icms_sp"]
+        .astype(float).sum()
+    )
+
+    # Per-model annual totals (point forecasts + realized for current year)
     for name in valid_models + ["ensemble"]:
         data = ensemble if name == "ensemble" else forecasts_output.get(name, [])
         if not data:
@@ -598,7 +606,20 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
             year = entry["data"][:4]
             by_year.setdefault(year, 0)
             by_year[year] += entry["forecast"]
-        annual_totals[name] = {y: round(v / 1e9, 2) for y, v in by_year.items()}
+        totals = {y: round(v / 1e9, 2) for y, v in by_year.items()}
+        # Add realized months to current year
+        cy_str = str(current_year)
+        if cy_str in totals:
+            totals[cy_str] = round((by_year[cy_str] + realized_current_year) / 1e9, 2)
+        annual_totals[name] = totals
+
+    # Store realized amount and month count for downstream consumers
+    realized_months = int((train_df["data"].dt.year == current_year).sum())
+    annual_totals["_realized"] = {
+        "year": current_year,
+        "months": realized_months,
+        "total_brl_bi": round(realized_current_year / 1e9, 2),
+    }
 
     # Ensemble annual totals with Monte Carlo CIs
     if mc_ensemble_paths is not None:
@@ -610,6 +631,9 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
                 continue
             # Sum each simulation path over the months of this year
             annual_sums = np.sum(mc_ensemble_paths[:, yr_indices], axis=1)  # [N_SIMULATIONS]
+            # Add realized ICMS for current year
+            if yr == current_year:
+                annual_sums = annual_sums + realized_current_year
             yr_entry = {}
             for p in MC_PERCENTILES:
                 key = {5: "low_95", 25: "low_50", 50: "median", 75: "high_50", 95: "high_95"}[p]
@@ -628,6 +652,8 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
                 if len(yr_indices) == 0:
                     continue
                 annual_sums = np.sum(model_sims[:, yr_indices], axis=1)
+                if yr == current_year:
+                    annual_sums = annual_sums + realized_current_year
                 yr_entry = {}
                 for p in MC_PERCENTILES:
                     key = {5: "low_95", 25: "low_50", 50: "median", 75: "high_50", 95: "high_95"}[p]
