@@ -175,6 +175,45 @@ Outputs em `workspace/outputs/runs/{run_id}/`:
 | `manifest.json` | Metadata do run |
 | `ledger.jsonl` | Event stream de cada step |
 
+## Atualizacao automatica (Windows)
+
+O script `scripts/check_and_run.py` checa diariamente se os dados das APIs (BCB, IPEA, Focus) foram atualizados. Se sim, roda o pipeline automaticamente.
+
+### Testar manualmente
+
+No terminal do VS Code:
+
+```bash
+# Apenas checar se tem dados novos (nao roda o pipeline)
+python scripts/check_and_run.py --check
+
+# Checar e rodar se tiver atualizacao
+python scripts/check_and_run.py
+
+# Forcar execucao independente de atualizacao
+python scripts/check_and_run.py --force
+```
+
+### Agendar execucao diaria
+
+Abra o **PowerShell como Administrador** (clique direito no menu Iniciar > "Terminal (Admin)") e rode o comando abaixo, substituindo `C:\caminho\para\previsao-icms-sp` pelo caminho real da pasta:
+
+```powershell
+schtasks /create /tn "PrevisaoICMS-Check" /tr "python C:\caminho\para\previsao-icms-sp\scripts\check_and_run.py" /sc daily /st 08:00
+```
+
+Isso cria uma tarefa que roda todo dia as 8h. Para verificar ou remover:
+
+```powershell
+# Ver se a tarefa existe
+schtasks /query /tn "PrevisaoICMS-Check"
+
+# Remover a tarefa
+schtasks /delete /tn "PrevisaoICMS-Check" /f
+```
+
+Os logs ficam em `workspace/cron.log`.
+
 ## Estrutura do repo
 
 ```
@@ -187,6 +226,7 @@ previsao-icms-sp/
 ├── contracts/schemas/         # JSON schemas para validacao de output
 ├── templates/pages/           # Jinja2 templates (dashboard_premium, academic_report)
 ├── data/                      # Input data (SEFAZ Excel)
+├── scripts/check_and_run.py   # Cron: checa dados novos e roda pipeline
 ├── config/                    # Pipeline config
 ├── lib/                       # Pipeline engine runtime (nao modificar)
 └── workspace/outputs/         # Run outputs (gitignored)
