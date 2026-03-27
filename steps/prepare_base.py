@@ -85,6 +85,10 @@ def main(*, output_dir: str = "", **kwargs) -> dict:
             for lag in range(1, 5):
                 df[f"{col}_lag{lag}"] = df[col].shift(lag)
 
+    # Seasonal lag: log(ICMS) at t-12 for M' models (subset AR at lag 12)
+    if df["icms_sp"].notna().any():
+        df["log_icms_lag12"] = np.log(df["icms_sp"]).shift(12)
+
     # Forward projection for IBC-BR using Focus/PIB + seasonal profile
     focus = macro.get("focus_expectations", {})
     pib_growth = float(pib_override) / 100 if pib_override else (focus.get("PIB Total", 2.5) / 100)
