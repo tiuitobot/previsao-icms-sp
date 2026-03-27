@@ -28,5 +28,6 @@
       "n_simulations": "detect from request: Monte Carlo count (default: 1000)"
     }
   },
-  "interpreter_model": "gpt-4.1-mini"
+  "interpreter_model": "gpt-5.4",
+  "interpreter_thinking_level": "medium"
 }

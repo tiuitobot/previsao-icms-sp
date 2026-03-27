@@ -115,9 +115,12 @@ def run_interpreter(pipeline_path: str, config_path: str, data_dir: Path, run_id
     )
 
     try:
-        executor = get_executor("azure_openai")
-        interp_model = config.get("interpreter_model", "gpt-4.1-mini")
-        result = executor.run(prompt=prompt, system_prompt=contract, model=interp_model)
+        executor = get_executor("copilot_cli")
+        interp_model = config.get("interpreter_model", "gpt-5.4")
+        result = executor.run(
+            prompt=prompt, system_prompt=contract, model=interp_model,
+            thinking_level="medium",
+        )
         content = result.content.strip()
         if content.startswith("```"):
             lines = content.splitlines()
@@ -203,8 +206,8 @@ def main():
     if args.request:
         save_user_request(Path(data_dir), args.request)
 
-    # Dynamic pipeline (config exists) — interpret then run
-    if Path(config_path).exists() and not args.dry_run:
+    # Interpreter only runs when a text request is provided (opt-in)
+    if args.request and Path(config_path).exists() and not args.dry_run:
         print("Dynamic pipeline detected — running interpreter...")
         resolved_path = run_interpreter(pipeline, config_path, Path(data_dir), run_id)
         if resolved_path:
@@ -213,7 +216,7 @@ def main():
             print("Pipeline resolution failed, running original")
             rc = run_pipeline(pipeline, run_id, data_dir, extra_args)
     else:
-        # Static pipeline or dry-run
+        # No request = run pipeline as-is (deterministic)
         rc = run_pipeline(pipeline, run_id, data_dir, extra_args)
 
     # Show result
