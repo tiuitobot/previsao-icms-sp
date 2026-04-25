@@ -208,8 +208,9 @@ def _build_monthly_forecast_table(sarimax: dict) -> str:
         ens_val = ens.get("forecast", 0)
         cells += f'<td class="number ensemble-col">{_fmt_brl(ens_val / 1e9)}</td>'
         ci_entry = ci_by_date.get(d, {})
-        ci_lo = ci_entry.get("ci_lower", 0)
-        ci_hi = ci_entry.get("ci_upper", 0)
+        # CI keys come from monte_carlo_ensemble: p5/p95 are the 90% interval bounds.
+        ci_lo = ci_entry.get("p5") or ci_entry.get("ci_lower") or 0
+        ci_hi = ci_entry.get("p95") or ci_entry.get("ci_upper") or 0
         cells += f'<td class="number">{_fmt_brl(ci_lo / 1e9)}</td>'
         cells += f'<td class="number">{_fmt_brl(ci_hi / 1e9)}</td>'
         rows += f"<tr>{cells}</tr>\n"
@@ -316,8 +317,9 @@ def _build_ci_summary(sarimax: dict) -> str:
     for entry in ci_intervals:
         year = entry["data"][:4]
         ci_by_year.setdefault(year, {"lowers": [], "uppers": []})
-        ci_by_year[year]["lowers"].append(entry.get("ci_lower", 0))
-        ci_by_year[year]["uppers"].append(entry.get("ci_upper", 0))
+        # Monte Carlo p5/p95 are the 90% interval bounds.
+        ci_by_year[year]["lowers"].append(entry.get("p5") or entry.get("ci_lower") or 0)
+        ci_by_year[year]["uppers"].append(entry.get("p95") or entry.get("ci_upper") or 0)
 
     # Min/max from individual models by year
     model_range_by_year = {}
@@ -399,6 +401,249 @@ def _build_ci_summary(sarimax: dict) -> str:
             </thead>
             <tbody>{rows}</tbody>
         </table>
+    </section>
+    """
+
+
+def _yoy_combined_series(sarimax: dict, sefaz: dict) -> list:
+    """Build (date, value, source) ordered list combining realized + forecast.
+
+    Returns list of dicts: {date: 'YYYY-MM-DD', value: float, source: 'realized'|'forecast'}
+    Realized values take precedence on overlapping dates.
+    """
+    by_date = {}
+    for entry in sefaz.get("icms_sp_series", []):
+        d = entry.get("data") or entry.get("date")
+        v = entry.get("icms_sp") or entry.get("value")
+        if d and v is not None:
+            by_date[d[:10]] = {"date": d[:10], "value": float(v), "source": "realized"}
+    for entry in sarimax.get("ensemble_mean", []):
+        d = entry.get("data")
+        v = entry.get("forecast")
+        if d and v is not None and d[:10] not in by_date:
+            by_date[d[:10]] = {"date": d[:10], "value": float(v), "source": "forecast"}
+    return sorted(by_date.values(), key=lambda x: x["date"])
+
+
+def _fmt_pct(v: float) -> str:
+    if v is None:
+        return "—"
+    sign = "+" if v >= 0 else ""
+    return f'<span class="{"pos" if v >= 0 else "neg"}">{sign}{v:.2f}%</span>'
+
+
+def _fmt_diff_brl(v: float) -> str:
+    if v is None:
+        return "—"
+    sign = "+" if v >= 0 else "−"
+    return f"{sign}R$ {abs(v):.2f} bi"
+
+
+def _build_yoy_section(sarimax: dict, sefaz: dict) -> str:
+    """Four YoY tables: month-over-year, quarter-over-year, 12m-over-12m, year-over-year.
+    Mixes realized + forecast — explicit source tagging per period.
+    """
+    series = _yoy_combined_series(sarimax, sefaz)
+    if not series:
+        return ""
+
+    by_date = {s["date"]: s for s in series}
+    sorted_dates = [s["date"] for s in series]
+
+    # ----- 1) Mês vs mesmo mês ano anterior (últimos 24 meses)
+    today_year = max(int(d[:4]) for d in sorted_dates)
+    monthly_rows = ""
+    target_dates = [d for d in sorted_dates if int(d[:4]) >= today_year - 1]
+    for d in target_dates[-24:]:
+        cur = by_date[d]
+        # mesmo mês ano anterior
+        py = f"{int(d[:4])-1:04d}-{d[5:7]}-{d[8:10]}"
+        prev = by_date.get(py)
+        if not prev:
+            continue
+        cur_v = cur["value"] / 1e9
+        prev_v = prev["value"] / 1e9
+        delta = cur_v - prev_v
+        pct = (delta / prev_v * 100) if prev_v else None
+        tag = "Realizado" if cur["source"] == "realized" else "Previsto"
+        cur_label = f'{d[5:7]}/{d[:4]} <span class="src-tag src-{cur["source"]}">{tag}</span>'
+        monthly_rows += (
+            f"<tr><td>{cur_label}</td>"
+            f'<td class="number">{_fmt_brl(cur_v)}</td>'
+            f'<td class="number">{_fmt_brl(prev_v)}</td>'
+            f'<td class="number">{_fmt_diff_brl(delta)}</td>'
+            f'<td class="number">{_fmt_pct(pct)}</td></tr>'
+        )
+
+    # ----- 2) Trimestre vs mesmo trimestre ano anterior
+    by_quarter = {}  # {'YYYY-Q': {'sum': float, 'months': int, 'has_forecast': bool}}
+    for s in series:
+        y = int(s["date"][:4]); m = int(s["date"][5:7])
+        q = (m - 1) // 3 + 1
+        key = f"{y}-Q{q}"
+        d = by_quarter.setdefault(key, {"sum": 0.0, "months": 0, "has_forecast": False, "has_realized": False})
+        d["sum"] += s["value"]
+        d["months"] += 1
+        if s["source"] == "forecast":
+            d["has_forecast"] = True
+        else:
+            d["has_realized"] = True
+
+    quarter_rows = ""
+    quarter_keys = sorted(by_quarter.keys())
+    for key in quarter_keys:
+        if int(key[:4]) < today_year - 1:
+            continue
+        cur = by_quarter[key]
+        if cur["months"] < 3:
+            label_src = "Parcial"
+        elif cur["has_forecast"] and cur["has_realized"]:
+            label_src = "Misto"
+        elif cur["has_forecast"]:
+            label_src = "Previsto"
+        else:
+            label_src = "Realizado"
+        prev_key = f"{int(key[:4])-1}-{key[5:]}"
+        prev = by_quarter.get(prev_key)
+        if not prev or prev["months"] < 3:
+            continue
+        cur_v = cur["sum"] / 1e9
+        prev_v = prev["sum"] / 1e9
+        delta = cur_v - prev_v
+        pct = (delta / prev_v * 100) if prev_v else None
+        src_class = "realized" if label_src == "Realizado" else ("forecast" if label_src == "Previsto" else "mixed")
+        quarter_rows += (
+            f'<tr><td>{key} <span class="src-tag src-{src_class}">{label_src}</span></td>'
+            f'<td class="number">{_fmt_brl(cur_v)}</td>'
+            f'<td class="number">{_fmt_brl(prev_v)}</td>'
+            f'<td class="number">{_fmt_diff_brl(delta)}</td>'
+            f'<td class="number">{_fmt_pct(pct)}</td></tr>'
+        )
+
+    # ----- 3) 12 meses vs 12 meses anteriores (rolling, mensal)
+    rolling_rows = ""
+    n = len(series)
+    for i in range(23, n):
+        # janela 12m terminando em i, anterior 12m terminando em i-12
+        if i - 23 < 0:
+            continue
+        cur_window = series[i-11:i+1]
+        prev_window = series[i-23:i-11]
+        if len(cur_window) < 12 or len(prev_window) < 12:
+            continue
+        cur_start = cur_window[0]["date"]
+        cur_end = cur_window[-1]["date"]
+        prev_start = prev_window[0]["date"]
+        prev_end = prev_window[-1]["date"]
+        if int(cur_end[:4]) < today_year - 1:
+            continue
+        cur_v = sum(s["value"] for s in cur_window) / 1e9
+        prev_v = sum(s["value"] for s in prev_window) / 1e9
+        delta = cur_v - prev_v
+        pct = (delta / prev_v * 100) if prev_v else None
+        n_fc = sum(1 for s in cur_window if s["source"] == "forecast")
+        if n_fc == 0:
+            tag, src_class = "Realizado", "realized"
+        elif n_fc == 12:
+            tag, src_class = "Previsto", "forecast"
+        else:
+            tag, src_class = f"{12-n_fc}r/{n_fc}p", "mixed"
+        # Label: 12m terminando em <mês/ano> (cur) vs 12m terminando em <mês/ano-1> (prev)
+        cur_label = f"{cur_start[5:7]}/{cur_start[2:4]}–{cur_end[5:7]}/{cur_end[2:4]}"
+        prev_label = f"{prev_start[5:7]}/{prev_start[2:4]}–{prev_end[5:7]}/{prev_end[2:4]}"
+        rolling_rows += (
+            f'<tr><td>{cur_label} <small>vs {prev_label}</small> <span class="src-tag src-{src_class}">{tag}</span></td>'
+            f'<td class="number">{_fmt_brl(cur_v)}</td>'
+            f'<td class="number">{_fmt_brl(prev_v)}</td>'
+            f'<td class="number">{_fmt_diff_brl(delta)}</td>'
+            f'<td class="number">{_fmt_pct(pct)}</td></tr>'
+        )
+    # Manter só os últimos 14 meses do rolling pra tabela não estourar
+    rolling_rows_list = rolling_rows.split("</tr>")
+    if len(rolling_rows_list) > 15:
+        rolling_rows = "</tr>".join(rolling_rows_list[-15:])
+
+    # ----- 4) Ano vs ano anterior (anual)
+    by_year = {}
+    for s in series:
+        y = s["date"][:4]
+        d = by_year.setdefault(y, {"sum": 0.0, "months": 0, "has_forecast": False, "has_realized": False})
+        d["sum"] += s["value"]
+        d["months"] += 1
+        if s["source"] == "forecast":
+            d["has_forecast"] = True
+        else:
+            d["has_realized"] = True
+
+    annual_rows = ""
+    years = sorted(by_year.keys())
+    for y in years:
+        if int(y) < today_year - 2:
+            continue
+        cur = by_year[y]
+        prev = by_year.get(str(int(y)-1))
+        if not prev or prev["months"] < 12:
+            continue
+        if cur["has_forecast"] and cur["has_realized"]:
+            label_src = f"{cur['months']-sum(1 for s in series if s['date'][:4]==y and s['source']=='forecast')}r/{sum(1 for s in series if s['date'][:4]==y and s['source']=='forecast')}p"
+            src_class = "mixed"
+        elif cur["has_forecast"]:
+            label_src, src_class = "Previsto", "forecast"
+        else:
+            label_src, src_class = "Realizado", "realized"
+        cur_v = cur["sum"] / 1e9
+        prev_v = prev["sum"] / 1e9
+        delta = cur_v - prev_v
+        pct = (delta / prev_v * 100) if prev_v else None
+        annual_rows += (
+            f'<tr><td>{y} <span class="src-tag src-{src_class}">{label_src}</span></td>'
+            f'<td class="number">{_fmt_brl(cur_v)}</td>'
+            f'<td class="number">{_fmt_brl(prev_v)}</td>'
+            f'<td class="number">{_fmt_diff_brl(delta)}</td>'
+            f'<td class="number">{_fmt_pct(pct)}</td></tr>'
+        )
+
+    return f"""
+    <section>
+        <h2>Variações Ano contra Ano</h2>
+        <p class="section-desc">Comparações YoY com tags de origem (Realizado / Previsto / Misto). Inclui meses já realizados do ano corrente.</p>
+        <style>
+        .yoy-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }}
+        @media (max-width: 900px) {{ .yoy-grid {{ grid-template-columns: 1fr; }} }}
+        .yoy-card h3 {{ font-size: 1.05rem; margin: .5rem 0; }}
+        .src-tag {{ font-size: .7rem; padding: 1px 6px; border-radius: 4px; margin-left: .3rem; }}
+        .src-realized {{ background: #d1f3d9; color: #1a5e2c; }}
+        .src-forecast {{ background: #e0e6ff; color: #2c3e8a; }}
+        .src-mixed    {{ background: #fff2cc; color: #7a5a00; }}
+        .pos {{ color: #1a7f37; font-weight: 600; }}
+        .neg {{ color: #c1362a; font-weight: 600; }}
+        </style>
+        <div class="yoy-grid">
+          <div class="yoy-card">
+            <h3>Ano contra Ano</h3>
+            <div class="table-scroll"><table class="data-table">
+              <thead><tr><th>Ano</th><th>Atual</th><th>Anterior</th><th>Δ R$</th><th>Δ %</th></tr></thead>
+              <tbody>{annual_rows}</tbody></table></div>
+          </div>
+          <div class="yoy-card">
+            <h3>12 meses vs 12 meses anteriores (rolling)</h3>
+            <div class="table-scroll"><table class="data-table">
+              <thead><tr><th>Janela</th><th>Atual</th><th>Anterior</th><th>Δ R$</th><th>Δ %</th></tr></thead>
+              <tbody>{rolling_rows}</tbody></table></div>
+          </div>
+          <div class="yoy-card">
+            <h3>Trimestre vs mesmo Tri ano anterior</h3>
+            <div class="table-scroll"><table class="data-table">
+              <thead><tr><th>Tri</th><th>Atual</th><th>Anterior</th><th>Δ R$</th><th>Δ %</th></tr></thead>
+              <tbody>{quarter_rows}</tbody></table></div>
+          </div>
+          <div class="yoy-card">
+            <h3>Mês vs mesmo Mês ano anterior</h3>
+            <div class="table-scroll"><table class="data-table">
+              <thead><tr><th>Mês</th><th>Atual</th><th>Anterior</th><th>Δ R$</th><th>Δ %</th></tr></thead>
+              <tbody>{monthly_rows}</tbody></table></div>
+          </div>
+        </div>
     </section>
     """
 
@@ -1627,6 +1872,7 @@ def main(*, output_dir: str = "", template_name: str = "", **kwargs) -> dict:
     monthly_table = _build_monthly_forecast_table(sarimax)
     diagnostics_card = _build_diagnostics_card(sarimax)
     ci_summary = _build_ci_summary(sarimax)
+    yoy_section = _build_yoy_section(sarimax, sefaz)
     scenario_summary = _build_scenario_summary(sarimax)
     predictions_table = _build_predictions_table(sarimax)
     freshness_indicator = _build_freshness_indicator(macro, sefaz)
@@ -1679,6 +1925,8 @@ def main(*, output_dir: str = "", template_name: str = "", **kwargs) -> dict:
         {diagnostics_card}
 
         {ci_summary}
+
+        {yoy_section}
 
         {monthly_table}
 

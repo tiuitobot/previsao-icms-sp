@@ -38,7 +38,8 @@
       "executor": "python",
       "depends_on": ["prepare_base"],
       "args": {"output_dir": "{output_dir}"},
-      "checkpoint": true
+      "checkpoint": true,
+      "timeout_seconds": 1800
     },
     {
       "id": "cross_validate_r",
