@@ -1,7 +1,7 @@
 {
   "repo": "previsao-icms-sp",
   "version": "1.0.0",
-  "lastUpdated": "2026-04-26T20:30:00-0300",
+  "lastUpdated": "2026-04-26T00:00:00Z",
   "_cursor": "46ab0712509078d922e0cbb07dfeaa797f13876d",
   "keyInfo": [
     {
@@ -22,7 +22,7 @@
       "date": "2026-02-14",
       "source": "S-0001 — Discussão projeção IBC-BR",
       "context": "Gap G2 identificado como prioridade alta no pipeline de previsão ICMS-SP",
-      "_sweepHits": 2
+      "_sweepHits": 1
     },
     {
       "id": "K003",
@@ -31,7 +31,7 @@
       "status": "confirmed",
       "date": "2026-03-27",
       "source": "git commit 2e7c109",
-      "_sweepHits": 2
+      "_sweepHits": 3
     },
     {
       "id": "K004",
@@ -40,7 +40,7 @@
       "status": "confirmed",
       "date": "2026-03-27",
       "source": "git commit 2e7c109",
-      "_sweepHits": 2
+      "_sweepHits": 3
     },
     {
       "id": "K005",
@@ -49,7 +49,7 @@
       "status": "confirmed",
       "date": "2026-03-25",
       "source": "git commit 808ad8d",
-      "_sweepHits": 2
+      "_sweepHits": 3
     },
     {
       "id": "K006",
@@ -58,7 +58,7 @@
       "status": "confirmed",
       "date": "2026-03-25",
       "source": "git commit aaa7378",
-      "_sweepHits": 2
+      "_sweepHits": 3
     },
     {
       "id": "K007",
@@ -67,7 +67,7 @@
       "status": "confirmed",
       "date": "2026-03-26",
       "source": "git commit df246a3",
-      "_sweepHits": 2
+      "_sweepHits": 3
     },
     {
       "id": "K008",
@@ -76,7 +76,7 @@
       "status": "confirmed",
       "date": "2026-03-27",
       "source": "git commit ad030ba, acb0649",
-      "_sweepHits": 2
+      "_sweepHits": 3
     }
   ]
 }
