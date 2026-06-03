@@ -210,5 +210,77 @@
     "source": "git commit 808ad8d",
     "_sweepHits": 0,
     "archivedAt": "2026-04-27T00:00:00Z"
+  },
+  {
+    "id": "K002",
+    "info": "Projeção uniforme (linear) de IBC-BR ignora sazonalidade mensal do ICMS; usar expectativas Focus mensais reduz viés sistemático (subestima picos e superestima vales) e melhora intervalo de confiança.",
+    "importance": "high",
+    "status": "obsolete",
+    "date": "2026-02-14",
+    "source": "S-0001 — Discussão projeção IBC-BR",
+    "context": "Gap G2 identificado como prioridade alta no pipeline de previsão ICMS-SP",
+    "_sweepHits": 0,
+    "archivedAt": "2026-04-27T13:30:00Z"
+  },
+  {
+    "id": "K003",
+    "info": "Models 2-5 rejeitam Ljung-Box no lag 12 por sobre-diferenciação (D=1). Fix: família M' substitui polinômio SARIMA sazonal por log(ICMS)_{t-12} como regressor exógeno. M5' não tem alternativa SARIMA clássica.",
+    "importance": "high",
+    "status": "obsolete",
+    "date": "2026-03-27",
+    "source": "git commit 2e7c109",
+    "_sweepHits": 0,
+    "archivedAt": "2026-04-27T13:30:00Z"
+  },
+  {
+    "id": "K004",
+    "info": "M1 excluído dos ensembles prime — sistematicamente conservador em horizontes longos, arrasta previsões ~4 bi abaixo sem ganho de acurácia. Ensembles são intra-família: originais competem entre si, primes entre si.",
+    "importance": "high",
+    "status": "obsolete",
+    "date": "2026-03-27",
+    "source": "git commit 2e7c109",
+    "_sweepHits": 0,
+    "archivedAt": "2026-04-27T13:30:00Z"
+  },
+  {
+    "id": "K006",
+    "info": "Monte Carlo CI: N=1000 caminhos por modelo via model.simulate(). CIs do ensemble: empilha modelos → percentis (p5, p25, p50, p75, p95). Saídas: confidence_intervals, monte_carlo_config, best_model_mape.",
+    "importance": "high",
+    "status": "obsolete",
+    "date": "2026-03-25",
+    "source": "git commit aaa7378",
+    "_sweepHits": 0,
+    "archivedAt": "2026-04-27T13:30:00Z"
+  },
+  {
+    "id": "K007",
+    "info": "OOS expandido: 23 janelas, horizonte 12m. Modelos individuais fitados uma vez por janela em passo único; previsões reutilizadas para as 31 combinações de ensemble sem re-fitting. Pesos recalculados por janela.",
+    "importance": "high",
+    "status": "obsolete",
+    "date": "2026-03-26",
+    "source": "git commit df246a3",
+    "_sweepHits": 0,
+    "archivedAt": "2026-04-27T13:30:00Z"
+  },
+  {
+    "id": "K008",
+    "info": "Pipeline: 11 passos, 5 modelos SARIMAX (+família M'), saída dual-horizonte (dashboard HTML + relatório acadêmico). Checker automático scripts/check_and_run.py — polling BCB/IPEA/Focus, suporte Windows Task Scheduler.",
+    "importance": "high",
+    "status": "obsolete",
+    "date": "2026-03-27",
+    "source": "git commit ad030ba, acb0649",
+    "_sweepHits": 0,
+    "archivedAt": "2026-04-27T13:30:00Z"
+  },
+  {
+    "id": "K002",
+    "info": "Projeção uniforme (linear) de IBC-BR ignora sazonalidade mensal relevante para ICMS (picos em Black Friday/Natal e vales sazonais). Para forecast fiscal, preferir expectativas Focus mensais para preservar sazonalidade e reduzir viés sistemático.",
+    "importance": "high",
+    "status": "obsolete",
+    "date": "2026-02-14",
+    "source": "S-0001 — memory/signals.md (SEFAZ)",
+    "context": "Gap G2: projeção de IBC-BR sem sazonalidade",
+    "_sweepHits": 0,
+    "archivedAt": "2026-05-13T00:00:00Z"
   }
 ]
