@@ -1,7 +1,7 @@
 {
   "repo": "previsao-icms-sp",
   "version": "1.0.0",
-  "lastUpdated": "2026-05-29T10:00:00Z",
+  "lastUpdated": "2026-06-03T00:00:00Z",
   "_cursor": "b3000948d02b5247fe45faca56fcb31a404661e1",
   "keyInfo": [
     {
@@ -12,6 +12,33 @@
       "date": "2026-02-13",
       "source": "S-000287 — Models 2-5 falharam sem máscara",
       "context": "Replicação R→Python dos 5 modelos SARIMAX",
+      "_sweepHits": 3
+    },
+    {
+      "id": "K002",
+      "info": "Add M' (prime) model family with lag12 exog to fix Ljung-Box rejection",
+      "importance": "high",
+      "status": "active",
+      "date": "2026-03-27",
+      "source": "git commit 2e7c109",
+      "_sweepHits": 3
+    },
+    {
+      "id": "K003",
+      "info": "V1.0 — replace run.sh with run.py, rewrite README to match actual pipeline",
+      "importance": "high",
+      "status": "active",
+      "date": "2026-03-27",
+      "source": "git commit 900a900",
+      "_sweepHits": 3
+    },
+    {
+      "id": "K004",
+      "info": "Consolidar sinal S-0001 em key-info (K002)",
+      "importance": "medium",
+      "status": "active",
+      "date": "2026-04-26",
+      "source": "git commit 46ab071",
       "_sweepHits": 3
     }
   ]
